@@ -1,1 +1,0 @@
-/usr/bin/c++  -pipe -std=c++20 -g CMakeFiles/rp.dir/src/Type.cpp.o -o rp   -L/hqzn/rp/ThirdParty/gtest/lib  -Wl,-rpath,/hqzn/rp/ThirdParty/gtest/lib -lgtest -lgtest_main -lpthread 

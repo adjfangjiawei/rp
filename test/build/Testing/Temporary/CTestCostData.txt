@@ -1,3 +1,0 @@
-testbase 0 0
----
-testbase

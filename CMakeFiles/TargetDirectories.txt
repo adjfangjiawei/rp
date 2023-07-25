@@ -1,3 +1,0 @@
-/hqzn/rp/CMakeFiles/rp.dir
-/hqzn/rp/CMakeFiles/edit_cache.dir
-/hqzn/rp/CMakeFiles/rebuild_cache.dir

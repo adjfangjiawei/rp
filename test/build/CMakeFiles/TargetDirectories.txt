@@ -1,4 +1,0 @@
-/hqzn/rp/test/build/CMakeFiles/testbase.dir
-/hqzn/rp/test/build/CMakeFiles/test.dir
-/hqzn/rp/test/build/CMakeFiles/edit_cache.dir
-/hqzn/rp/test/build/CMakeFiles/rebuild_cache.dir
