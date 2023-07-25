@@ -30,3 +30,15 @@
 *.exe
 *.out
 *.app
+
+# CMakeFiles
+CMakeFiles/
+CPM_modules/
+test/build/
+cmake_install.cmake
+CMakeCache.txt
+cpm-package-lock.cmake
+Makefile
+rp
+sshkey
+sshkey.pub
