@@ -1,5 +1,15 @@
 #include <iostream>
+#include <pprint.hpp>
+#include <sstream>
 #include <string>
+
+auto getPPrint() {
+  // std::stringstream ss;
+  pprint::PrettyPrinter printer;
+  printer.quotes(true);
+
+  return printer;
+}
 
 // 抽象类
 class ExprAST {
@@ -36,11 +46,18 @@ private:
 };
 
 // 整型立即数
+template <class Print>
 class IntegerInstantValueExprAST : public InstantValueExprAST {
 public:
+  InstantValueExprAST(int value, Print *printer) : printer(printer) {}
   virtual void pprint(std::ostream &os) {}
 
 private:
   int val;
+  Print *printer;
 };
-int main() { std::cout << "hello world"; }
+int main() {
+  int a = 100;
+  auto printer = getPPrint();
+  printer.print(5);
+}

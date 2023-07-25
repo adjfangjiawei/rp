@@ -1,0 +1,13 @@
+if (POLICY CMP0048)
+  cmake_policy(SET CMP0048 NEW)
+endif (POLICY CMP0048)
+project(rp VERSION 1.0.0 LANGUAGES C CXX)
+cmake_minimum_required(VERSION 3.22)
+set(CMAKE_CXX_STANDARD 20)
+#-Werror
+add_compile_options(-Wall -Wextra -pedantic)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pipe -std=c++20")
+set(CMAKE_BUILD_TYPE Debug)
+include_directories(c)
+include_directories(pprint/include)
+add_executable(rp c/Type.cpp)
