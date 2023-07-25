@@ -6,13 +6,6 @@
 #include <spdlog/spdlog.h>
 #include <sstream>
 #include <string>
-auto getPPrint() {
-  // std::stringstream ss;
-  pprint::PrettyPrinter printer;
-  printer.quotes(true);
-
-  return printer;
-}
 
 // 抽象类
 template <class Print> class ExprAST {
@@ -74,9 +67,10 @@ auto get_Token(std::string &source, int index) {
 
 // 浮点型立即数
 int main() {
-  auto printer = getPPrint();
+
   std::error_code error = mylib::errc::isLegalVariableName;
   std::string hello = "njwdnek";
+  auto &&[printer, sprinter] = getPPrint();
   if (error.value() != 0) {
     // printer.print({1, 2});
     printer.print(std::make_tuple(1, "jdis"));
@@ -99,7 +93,4 @@ int main() {
   stream.str("");
   printer1.print(std::make_tuple(1, "jdis"));
   std::cout << stream.str() << std::endl;
-  auto sstream = std::stringstream{};
-  sPrittyPrinter sprinter(&sstream);
-  spdlog::info(sprinter.print(std::make_tuple("h", 100)));
 }

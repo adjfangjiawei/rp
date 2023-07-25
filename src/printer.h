@@ -27,3 +27,11 @@ private:
   pprint::PrettyPrinter *printer;
   std::stringstream *stream;
 };
+
+auto getPPrint() {
+  pprint::PrettyPrinter printer;
+  printer.quotes(true);
+  auto sstream = std::stringstream{};
+  sPrittyPrinter sprinter(&sstream);
+  return std::make_pair(printer, sprinter);
+}
