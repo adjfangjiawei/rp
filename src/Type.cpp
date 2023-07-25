@@ -1,4 +1,5 @@
 #include "errors.h"
+#include "printer.h"
 #include <exception>
 #include <iostream>
 #include <pprint.hpp>
@@ -64,13 +65,41 @@ private:
   Print *printer;
 };
 
-auto get_Token() { std::error_code{errno, std::system_category()}; }
+auto get_Token(std::string &source, int index) {
+  while (source[index] != ' ' && source[index] != '\n' &&
+         source[index] != '\t') {
+    index++;
+  }
+}
 
 // 浮点型立即数
 int main() {
-  std::error_code error{};
-
-  int a = 100;
   auto printer = getPPrint();
+  std::error_code error = mylib::errc::isLegalVariableName;
+  std::string hello = "njwdnek";
+  if (error.value() != 0) {
+    // printer.print({1, 2});
+    printer.print(std::make_tuple(1, "jdis"));
+    printer.print(mylib::errc::isLegalVariableName);
+    printer.print((mylib::errc::my_error)error.value());
+    spdlog::error("fatal error");
+    spdlog::error("错误码为{},{}", (mylib::errc::my_error)error.value(), hello);
+  }
+  spdlog::info("Entering main");
+  int a = 100;
+
   printer.print(5);
+
+  std::stringstream stream;
+  pprint::PrettyPrinter printer1(stream);
+  printer1.print(std::make_tuple(1, "jdis"));
+  std::string atxc;
+
+  // std::cout << stream.str() << std::endl;
+  stream.str("");
+  printer1.print(std::make_tuple(1, "jdis"));
+  std::cout << stream.str() << std::endl;
+  auto sstream = std::stringstream{};
+  sPrittyPrinter sprinter(&sstream);
+  spdlog::info(sprinter.print(std::make_tuple("h", 100)));
 }

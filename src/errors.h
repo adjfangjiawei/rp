@@ -7,13 +7,13 @@ namespace mylib {
 namespace errc {
 
 enum my_error {
-  isLegalVariableName = 0,
+  isLegalVariableName = 1,
 
 };
 
 inline const char *error_message(int c) {
   static const char *err_msg[] = {
-      "",
+      "hdfgsg",
   };
 
   assert(c < sizeof(err_msg) / sizeof(err_msg[0]));
