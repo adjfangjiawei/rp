@@ -1,0 +1,1 @@
+/usr/bin/c++  -pipe -std=c++20 -g CMakeFiles/testbase.dir/testbase.cpp.o -o testbase   -L/hqzn/rp/test/../ThirdParty/gtest/lib  -Wl,-rpath,/hqzn/rp/test/../ThirdParty/gtest/lib -lgtest -lgtest_main -lpthread 

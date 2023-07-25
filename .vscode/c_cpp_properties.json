@@ -3,8 +3,8 @@
         {
             "name": "Linux",
             "includePath": [
-                "${workspaceFolder}/c",
-                "${workspaceFolder}/pprint/include"
+                "${workspaceFolder}/ThirdParty/gtest/include",
+                "${workspaceFolder}/ThirdParty/pprint/include"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",

@@ -1,6 +1,6 @@
 file(REMOVE_RECURSE
-  "CMakeFiles/rp.dir/c/Type.cpp.o"
-  "CMakeFiles/rp.dir/c/Type.cpp.o.d"
+  "CMakeFiles/rp.dir/src/Type.cpp.o"
+  "CMakeFiles/rp.dir/src/Type.cpp.o.d"
   "rp"
   "rp.pdb"
 )

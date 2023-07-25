@@ -224,6 +224,40 @@ CMAKE_STRIP:FILEPATH=/usr/bin/strip
 // Studio IDE projects all commands are done without /nologo.
 CMAKE_VERBOSE_MAKEFILE:BOOL=FALSE
 
+//Don't create a package lock file in the binary path
+CPM_DONT_CREATE_PACKAGE_LOCK:BOOL=OFF
+
+//Don't update the module path to allow using find_package
+CPM_DONT_UPDATE_MODULE_PATH:BOOL=OFF
+
+//Always download dependencies from source
+CPM_DOWNLOAD_ALL:BOOL=OFF
+
+//Add all packages added through CPM.cmake to the package lock
+CPM_INCLUDE_ALL_IN_PACKAGE_LOCK:BOOL=OFF
+
+//Only use `find_package` to get dependencies
+CPM_LOCAL_PACKAGES_ONLY:BOOL=OFF
+
+//Directory to download CPM dependencies
+CPM_SOURCE_CACHE:PATH=OFF
+
+//Always try to use `find_package` to get dependencies
+CPM_USE_LOCAL_PACKAGES:BOOL=OFF
+
+//Directory under which to collect all populated content
+FETCHCONTENT_BASE_DIR:PATH=/hqzn/rp/_deps
+
+//Disables all attempts to download or update content and assumes
+// source dirs already exist
+FETCHCONTENT_FULLY_DISCONNECTED:BOOL=OFF
+
+//Enables QUIET option for all content population
+FETCHCONTENT_QUIET:BOOL=ON
+
+//Enables UPDATE_DISCONNECTED behavior for all content population
+FETCHCONTENT_UPDATES_DISCONNECTED:BOOL=OFF
+
 //Value Computed by CMake
 rp_BINARY_DIR:STATIC=/hqzn/rp
 
@@ -381,4 +415,13 @@ CMAKE_STRIP-ADVANCED:INTERNAL=1
 CMAKE_UNAME:INTERNAL=/usr/bin/uname
 //ADVANCED property for variable: CMAKE_VERBOSE_MAKEFILE
 CMAKE_VERBOSE_MAKEFILE-ADVANCED:INTERNAL=1
+CPM_DIRECTORY:INTERNAL=/hqzn/rp/cmake
+//Don't download or configure dependencies (for testing)
+CPM_DRY_RUN:INTERNAL=OFF
+CPM_FILE:INTERNAL=/hqzn/rp/cmake/CPM.cmake
+CPM_INDENT:INTERNAL=CPM:
+CPM_MODULE_PATH:INTERNAL=/hqzn/rp/CPM_modules
+CPM_PACKAGES:INTERNAL=
+CPM_PACKAGE_LOCK_FILE:INTERNAL=/hqzn/rp/cpm-package-lock.cmake
+CPM_VERSION:INTERNAL=1.0.0-development-version
 

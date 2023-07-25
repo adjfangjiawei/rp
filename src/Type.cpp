@@ -1,8 +1,8 @@
+#include <gtest/gtest.h>
 #include <iostream>
 #include <pprint.hpp>
 #include <sstream>
 #include <string>
-
 auto getPPrint() {
   // std::stringstream ss;
   pprint::PrettyPrinter printer;
@@ -49,13 +49,15 @@ private:
 template <class Print>
 class IntegerInstantValueExprAST : public InstantValueExprAST {
 public:
-  InstantValueExprAST(int value, Print *printer) : printer(printer) {}
+  IntegerInstantValueExprAST(int value, Print *printer)
+      : printer(printer), val(value) {}
   virtual void pprint(std::ostream &os) {}
 
 private:
   int val;
   Print *printer;
 };
+
 int main() {
   int a = 100;
   auto printer = getPPrint();

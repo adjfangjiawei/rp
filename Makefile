@@ -129,29 +129,29 @@ rp/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/rp.dir/build.make CMakeFiles/rp.dir/build
 .PHONY : rp/fast
 
-c/Type.o: c/Type.cpp.o
-.PHONY : c/Type.o
+src/Type.o: src/Type.cpp.o
+.PHONY : src/Type.o
 
 # target to build an object file
-c/Type.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/rp.dir/build.make CMakeFiles/rp.dir/c/Type.cpp.o
-.PHONY : c/Type.cpp.o
+src/Type.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/rp.dir/build.make CMakeFiles/rp.dir/src/Type.cpp.o
+.PHONY : src/Type.cpp.o
 
-c/Type.i: c/Type.cpp.i
-.PHONY : c/Type.i
+src/Type.i: src/Type.cpp.i
+.PHONY : src/Type.i
 
 # target to preprocess a source file
-c/Type.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/rp.dir/build.make CMakeFiles/rp.dir/c/Type.cpp.i
-.PHONY : c/Type.cpp.i
+src/Type.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/rp.dir/build.make CMakeFiles/rp.dir/src/Type.cpp.i
+.PHONY : src/Type.cpp.i
 
-c/Type.s: c/Type.cpp.s
-.PHONY : c/Type.s
+src/Type.s: src/Type.cpp.s
+.PHONY : src/Type.s
 
 # target to generate assembly for a file
-c/Type.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/rp.dir/build.make CMakeFiles/rp.dir/c/Type.cpp.s
-.PHONY : c/Type.cpp.s
+src/Type.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/rp.dir/build.make CMakeFiles/rp.dir/src/Type.cpp.s
+.PHONY : src/Type.cpp.s
 
 # Help Target
 help:
@@ -162,9 +162,9 @@ help:
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
 	@echo "... rp"
-	@echo "... c/Type.o"
-	@echo "... c/Type.i"
-	@echo "... c/Type.s"
+	@echo "... src/Type.o"
+	@echo "... src/Type.i"
+	@echo "... src/Type.s"
 .PHONY : help
 
 
