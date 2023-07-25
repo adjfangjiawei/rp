@@ -42,14 +42,12 @@ include(cmake/CPM.cmake)
 # # 基于GitHub网址添加依赖库，依赖库名json，版本号为：3.9.1
 # # gh:nlohmann/json对应的完整网址为：https://github.com/lohmann/json.git
 # CPMAddPackage("gh:nlohmann/json@3.9.1")
+CPMAddPackage("gh:gabime/spdlog@1.x")
 set(CMAKE_CXX_STANDARD 20)
 #-Werror
 add_compile_options(-Wall -Wextra -pedantic)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pipe -std=c++20")
-set(CMAKE_BUILD_TYPE Debug)
-include_directories(src)
-include_directories(ThirdParty/pprint/include)
-include_directories(ThirdParty/gtest/include)
-link_directories(ThirdParty/gtest/lib)
+set(CMAKE_BUILD_TYPE Release)
+include_directories(ThirdParty/pprint)
 add_executable(rp src/Type.cpp)
-target_link_libraries(rp gtest gtest_main pthread)
+target_link_libraries(rp  spdlog)

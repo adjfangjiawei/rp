@@ -1,6 +1,8 @@
-#include <gtest/gtest.h>
+#include "errors.h"
+#include <exception>
 #include <iostream>
 #include <pprint.hpp>
+#include <spdlog/spdlog.h>
 #include <sstream>
 #include <string>
 auto getPPrint() {
@@ -12,33 +14,37 @@ auto getPPrint() {
 }
 
 // 抽象类
-class ExprAST {
+template <class Print> class ExprAST {
 public:
-  virtual void pprint(std::ostream &os) = 0;
+  virtual void pprint() = 0;
+
+private:
 };
 
 // 变量语法树
-class VariableExprAST : public ExprAST {
+template <class Print> class VariableExprAST : public ExprAST<Print> {
 public:
-  virtual void pprint(std::ostream &os) = 0;
+  virtual void pprint() = 0;
 };
 
-class InstantValueExprAST : public ExprAST {
-  virtual void pprint(std::ostream &os) = 0;
+// 立即数语法树
+template <class Print> class InstantValueExprAST : public ExprAST<Print> {
+  virtual void pprint() = 0;
 };
 
 // 一元表达式
-class UnaryExprAST : public ExprAST {
+template <class Print> class UnaryExprAST : public ExprAST<Print> {
 public:
 private:
   char op;
-  ExprAST *expr;
+  ExprAST<Print> *expr;
 };
 
 // 整型变量
-class IntegerVariableExprAST : public VariableExprAST {
+template <class Print>
+class IntegerVariableExprAST : public VariableExprAST<Print> {
 public:
-  virtual void pprint(std::ostream &os) {}
+  virtual void pprint() {}
 
 private:
   int val;
@@ -47,18 +53,23 @@ private:
 
 // 整型立即数
 template <class Print>
-class IntegerInstantValueExprAST : public InstantValueExprAST {
+class IntegerInstantValueExprAST : public InstantValueExprAST<Print> {
 public:
   IntegerInstantValueExprAST(int value, Print *printer)
       : printer(printer), val(value) {}
-  virtual void pprint(std::ostream &os) {}
+  virtual void pprint() {}
 
 private:
   int val;
   Print *printer;
 };
 
+auto get_Token() { std::error_code{errno, std::system_category()}; }
+
+// 浮点型立即数
 int main() {
+  std::error_code error{};
+
   int a = 100;
   auto printer = getPPrint();
   printer.print(5);
