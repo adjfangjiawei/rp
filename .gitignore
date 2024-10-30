@@ -43,5 +43,4 @@ Makefile
 rp
 sshkey
 sshkey.pub
-
-.vscode/
+Build/
