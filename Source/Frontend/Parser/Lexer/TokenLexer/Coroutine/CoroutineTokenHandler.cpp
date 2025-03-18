@@ -5,7 +5,7 @@ namespace rp {
 
         CoroutineTokenHandler::CoroutineTokenHandler(std::shared_ptr<Lexer> lexer) : lexer(lexer) {}
 
-        Token CoroutineTokenHandler::handleCoroutineTokens(const Token &current) {
+        Token CoroutineTokenHandler::handleCoroutineTokens(Token&& current) {
             // 处理协程相关的特殊token序列
             if (current.kind == TokenKind::Identifier) {
                 if (current.text == "co_await") {

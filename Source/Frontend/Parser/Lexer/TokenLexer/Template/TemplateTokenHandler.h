@@ -1,4 +1,3 @@
-
 #pragma once
 #include <memory>
 
@@ -13,7 +12,13 @@ namespace rp {
             explicit TemplateTokenHandler(std::shared_ptr<Lexer> lexer);
 
             // 处理模板相关的token
-            Token handleTemplateTokens(const Token &current);
+            Token handleTemplateTokens(Token&& current);
+
+            // 检查是否是模板开始
+            bool isTemplateStart(const Token& token);
+
+            // 检查是否是模板结束
+            bool isTemplateEnd(const Token& token);
 
           private:
             std::shared_ptr<Lexer> lexer;

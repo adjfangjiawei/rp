@@ -28,6 +28,9 @@ namespace rp {
             void ungetToken(Token&& token);
 
           private:
+            // 更新上下文状态
+            void updateContextState(const Token& token);
+
             std::shared_ptr<Lexer> lexer;
             std::queue<Token> tokenBuffer;
 

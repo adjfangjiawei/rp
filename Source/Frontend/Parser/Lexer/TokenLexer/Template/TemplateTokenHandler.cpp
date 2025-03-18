@@ -5,7 +5,7 @@ namespace rp {
 
         TemplateTokenHandler::TemplateTokenHandler(std::shared_ptr<Lexer> lexer) : lexer(lexer) {}
 
-        Token TemplateTokenHandler::handleTemplateTokens(const Token &current) {
+        Token TemplateTokenHandler::handleTemplateTokens(Token &&current) {
             // 处理模板相关的特殊token序列
             if (current.kind == TokenKind::Less) {
                 const Token &next = lexer->peekToken();

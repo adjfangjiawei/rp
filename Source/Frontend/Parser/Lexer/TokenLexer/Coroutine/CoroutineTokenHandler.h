@@ -1,4 +1,3 @@
-
 #pragma once
 #include <memory>
 
@@ -13,7 +12,13 @@ namespace rp {
             explicit CoroutineTokenHandler(std::shared_ptr<Lexer> lexer);
 
             // 处理协程相关的token
-            Token handleCoroutineTokens(const Token &current);
+            Token handleCoroutineTokens(Token&& current);
+
+            // 检查是否是协程开始
+            bool isCoroutineStart(const Token& token);
+
+            // 检查是否是协程结束
+            bool isCoroutineEnd(const Token& token);
 
           private:
             std::shared_ptr<Lexer> lexer;

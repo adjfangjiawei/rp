@@ -5,10 +5,10 @@ namespace rp {
 
         LambdaTokenHandler::LambdaTokenHandler(std::shared_ptr<Lexer> lexer) : lexer(lexer) {}
 
-        Token LambdaTokenHandler::handleLambdaTokens(const Token &current) {
+        Token LambdaTokenHandler::handleLambdaTokens(Token&& current) {
             // 处理Lambda相关的特殊token序列
             if (current.kind == TokenKind::LSquare) {
-                const Token &next = lexer->peekToken();
+                const Token& next = lexer->peekToken();
                 if (next.kind == TokenKind::RSquare) {
                     // 处理lambda引入符 []
                     lexer->nextToken();  // 消费 ]
@@ -37,6 +37,12 @@ namespace rp {
             result.column = current.column;
             result.filename = current.filename;
             return result;
+        }
+
+        bool LambdaTokenHandler::isLambdaStart(const Token& token) { return token.kind == TokenKind::LSquare; }
+
+        bool LambdaTokenHandler::isLambdaEnd(const Token& token) {
+            return token.kind == TokenKind::RBrace;  // Lambda 表达式以右花括号结束
         }
 
     }  // namespace frontend

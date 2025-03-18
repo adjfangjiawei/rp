@@ -1,4 +1,3 @@
-
 #pragma once
 #include <memory>
 
@@ -13,7 +12,13 @@ namespace rp {
             explicit LambdaTokenHandler(std::shared_ptr<Lexer> lexer);
 
             // 处理Lambda相关的token
-            Token handleLambdaTokens(const Token &current);
+            Token handleLambdaTokens(Token&& current);
+
+            // 检查是否是Lambda开始
+            bool isLambdaStart(const Token& token);
+
+            // 检查是否是Lambda结束
+            bool isLambdaEnd(const Token& token);
 
           private:
             std::shared_ptr<Lexer> lexer;
