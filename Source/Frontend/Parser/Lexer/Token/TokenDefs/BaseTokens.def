@@ -1,0 +1,11 @@
+// Base tokens
+TOKEN(EndOfFile,     "end of file")
+TOKEN(Invalid,       "invalid token")
+TOKEN(Identifier,    "identifier")
+TOKEN(NumberLiteral, "number literal")
+TOKEN(StringLiteral, "string literal")
+TOKEN(CharLiteral,   "character literal")
+
+// Lambda related
+TOKEN(LambdaIntro,   "lambda introducer")
+TOKEN(LambdaArrow,   "lambda arrow")

@@ -1,0 +1,9 @@
+// Main token definition file that includes all token categories
+
+// Include all token definition files
+#include "TokenDefs/BaseTokens.def"
+#include "TokenDefs/Keywords.def"
+#include "TokenDefs/Operators.def"
+#include "TokenDefs/Delimiters.def"
+#include "TokenDefs/Directives.def"
+#include "TokenDefs/Types.def"

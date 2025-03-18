@@ -1,0 +1,64 @@
+// Basic keywords
+KEYWORD(Class,        "class")
+KEYWORD(Struct,       "struct")
+KEYWORD(Enum,         "enum")
+KEYWORD(Union,        "union")
+KEYWORD(Template,     "template")
+KEYWORD(Typename,     "typename")
+KEYWORD(Const,        "const")
+KEYWORD(Static,       "static")
+KEYWORD(Virtual,      "virtual")
+KEYWORD(Override,     "override")
+KEYWORD(Auto,        "auto")
+KEYWORD(Register,    "register")
+KEYWORD(Extern,      "extern")
+KEYWORD(Mutable,     "mutable")
+KEYWORD(Final,        "final")
+KEYWORD(Public,       "public")
+KEYWORD(Private,      "private")
+KEYWORD(Protected,    "protected")
+
+// Control flow keywords
+KEYWORD(If,           "if")
+KEYWORD(Else,         "else")
+KEYWORD(While,        "while")
+KEYWORD(For,          "for")
+KEYWORD(Do,           "do")
+KEYWORD(Break,        "break")
+KEYWORD(Continue,     "continue")
+KEYWORD(Return,       "return")
+
+// C++11 keywords
+KEYWORD(Alignas,      "alignas")
+KEYWORD(Alignof,      "alignof")
+KEYWORD(Char16_t,     "char16_t")
+KEYWORD(Char32_t,     "char32_t")
+KEYWORD(Constexpr,    "constexpr")
+KEYWORD(Decltype,     "decltype")
+KEYWORD(Noexcept,     "noexcept")
+KEYWORD(Nullptr,      "nullptr")
+KEYWORD(Static_assert, "static_assert")
+KEYWORD(Thread_local, "thread_local")
+
+// C++14 keywords
+KEYWORD(Deprecated,   "deprecated")
+
+// C++17 keywords
+KEYWORD(Fallthrough, "fallthrough")
+KEYWORD(Nodiscard,   "nodiscard")
+KEYWORD(Maybe_unused, "maybe_unused")
+
+// C++20 keywords
+KEYWORD(Char8_t,     "char8_t")
+KEYWORD(Concept,     "concept")
+KEYWORD(Consteval,   "consteval")
+KEYWORD(Constinit,   "constinit")
+KEYWORD(co_await,    "co_await")
+KEYWORD(co_return,   "co_return")
+KEYWORD(co_yield,    "co_yield")
+KEYWORD(Requires,    "requires")
+
+// Module related
+KEYWORD(Module,      "module")
+KEYWORD(Import,      "import")
+KEYWORD(Export,      "export")

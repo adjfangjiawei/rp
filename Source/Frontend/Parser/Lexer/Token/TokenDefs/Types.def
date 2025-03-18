@@ -1,0 +1,11 @@
+// Types
+TYPE(Void,          "void")
+TYPE(Bool,          "bool")
+TYPE(Char,          "char")
+TYPE(Short,         "short")
+TYPE(Int,           "int")
+TYPE(Long,          "long")
+TYPE(Float,         "float")
+TYPE(Double,        "double")
+TYPE(Signed,        "signed")
+TYPE(Unsigned,      "unsigned")
