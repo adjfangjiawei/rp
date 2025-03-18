@@ -1,4 +1,4 @@
-#include "Frontend/Parser/Lexer/TokenLexer/TemplateTokenHandler.h"
+#include "Frontend/Parser/Lexer/TokenLexer/Template/TemplateTokenHandler.h"
 
 namespace rp {
     namespace frontend {

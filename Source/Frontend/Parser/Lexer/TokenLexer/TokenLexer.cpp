@@ -4,13 +4,13 @@
 namespace rp {
     namespace frontend {
 
-        TokenLexer::TokenLexer(std::shared_ptr<Lexer> baseLexer)
+        TokenLexer::TokenLexer(std::shared_ptr<Lexer> baseLexer, DiagnosticEngine* diagEngine)
             : lexer(baseLexer),
               commentHandler(std::make_unique<CommentHandler>(baseLexer)),
               templateHandler(std::make_unique<TemplateTokenHandler>(baseLexer)),
               coroutineHandler(std::make_unique<CoroutineTokenHandler>(baseLexer)),
               lambdaHandler(std::make_unique<LambdaTokenHandler>(baseLexer)),
-              preprocessorHandler(std::make_unique<PreprocessorHandler>(baseLexer)) {}
+              preprocessorHandler(std::make_unique<PreprocessorHandler>(diagEngine)) {}
 
         Token TokenLexer::nextToken() {
             // 如果缓冲区有token，先返回缓冲的token

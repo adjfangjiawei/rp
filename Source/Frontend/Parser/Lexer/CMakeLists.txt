@@ -22,7 +22,7 @@ target_link_libraries(Lexer
     MainLexer
     LexerLiterals
     LexerToken
-    LexerTokenParser
+    TokenLexer
     LexerErrorRecovery
     LexerTrace
     LexerUtils

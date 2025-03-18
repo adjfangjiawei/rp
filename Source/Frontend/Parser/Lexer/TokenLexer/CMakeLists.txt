@@ -1,27 +1,57 @@
-# Create library for token lexer component
-add_library(LexerTokenParser
-    ${CMAKE_CURRENT_SOURCE_DIR}/TokenLexer.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/TokenLexer.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/CommentHandler.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/CommentHandler.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/TemplateTokenHandler.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/TemplateTokenHandler.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/CoroutineTokenHandler.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/CoroutineTokenHandler.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/LambdaTokenHandler.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/LambdaTokenHandler.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/PreprocessorHandler.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/PreprocessorHandler.h
+# TokenLexer库
+add_library(TokenLexer
+    TokenLexer.cpp
+    TokenLexer.h
+    Preprocess/PreprocessorHandler.cpp
+    Preprocess/PreprocessorHandler.h
+    Preprocess/MacroExpander.cpp
+    Preprocess/MacroExpander.h
+    Preprocess/ConstantEvaluator.cpp
+    Preprocess/ConstantEvaluator.h
+    Preprocess/CacheStrategy.cpp
+    Preprocess/CacheStrategy.h
+    Preprocess/PreprocessorCache.cpp
+    Preprocess/PreprocessorCache.h
+    Comment/CommentHandler.cpp
+    Comment/CommentHandler.h
+    Coroutine/CoroutineTokenHandler.cpp
+    Coroutine/CoroutineTokenHandler.h
+    lambda/LambdaTokenHandler.cpp
+    lambda/LambdaTokenHandler.h
+    Template/TemplateTokenHandler.cpp
+    Template/TemplateTokenHandler.h
+    Serializer/TokenSerializer.cpp
+    Serializer/TokenSerializer.h
 )
 
-# Set include directories for this target
-target_include_directories(LexerTokenParser
-    PUBLIC
+# 查找并链接 cereal 库
+find_package(cereal REQUIRED)
+
+target_link_libraries(TokenLexer
+    PRIVATE
+        LexerToken
+        Diagnostic
+        cereal::cereal
+)
+
+target_include_directories(TokenLexer
+PUBLIC
     ${RP_INCLUDE_DIR}
 )
 
-# Link dependencies
-target_link_libraries(LexerTokenParser
-    PUBLIC
-    LexerToken
-)
+# 添加测试
+if(BUILD_TESTING)
+    add_executable(TokenLexerTests
+        ../Tests/PreprocessorTest.cpp
+        ../Tests/PreprocessorTest.h
+    )
+
+    target_link_libraries(TokenLexerTests
+        PRIVATE
+            TokenLexer
+            gtest
+            gtest_main
+    )
+
+    add_test(NAME TokenLexerTests COMMAND TokenLexerTests)
+endif()

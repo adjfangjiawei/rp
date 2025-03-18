@@ -1,5 +1,4 @@
-
-#include "Frontend/Parser/Lexer/TokenLexer/CommentHandler.h"
+#include "Frontend/Parser/Lexer/TokenLexer/Comment/CommentHandler.h"
 
 namespace rp {
     namespace frontend {

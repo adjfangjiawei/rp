@@ -13,7 +13,8 @@ namespace rp {
         // Token基础结构体
         struct Token {
             TokenKind kind;
-            std::string_view text;  // 指向源码中的原始文本
+            std::string textStorage;  // 存储实际的字符串内容
+            std::string_view text;    // 指向源码中的原始文本或textStorage
             unsigned line;
             unsigned column;
             std::string filename;
@@ -25,13 +26,25 @@ namespace rp {
                 bool boolValue;
             };
 
-            // 构造函数
-            Token(TokenKind k = TokenKind::Invalid) : kind(k), line(0), column(0), intValue(0) {}
+            // 默认构造函数
+            Token() : kind(TokenKind::Invalid), line(0), column(0), intValue(0) {}
 
-            Token(TokenKind k, size_t pos, size_t ln, size_t col) : kind(k), line(ln), column(col), intValue(0) {}
+            // 基本构造函数
+            explicit Token(TokenKind k) : kind(k), line(0), column(0), intValue(0) {}
 
-            Token(TokenKind k, size_t pos, size_t ln, size_t col, const NumberValue& value)
-                : kind(k), line(ln), column(col) {
+            // 位置信息构造函数
+            Token(TokenKind k, unsigned ln, unsigned col) : kind(k), line(ln), column(col), intValue(0) {}
+
+            // 带位置的构造函数
+            Token(TokenKind k, size_t pos, unsigned ln, unsigned col) : kind(k), line(ln), column(col), intValue(0) {}
+
+            // 完整构造函数
+            Token(TokenKind k, unsigned ln, unsigned col, const std::string& fname)
+                : kind(k), line(ln), column(col), filename(fname), intValue(0) {}
+
+            // 带位置和值的构造函数
+            Token(TokenKind k, size_t pos, unsigned ln, unsigned col, const NumberValue& value)
+                : kind(k), line(ln), column(col), intValue(0) {
                 if (value.kind == NumberKind::Integer) {
                     intValue = value.value;
                 } else {
@@ -39,13 +52,81 @@ namespace rp {
                 }
             }
 
-            // 禁用拷贝构造和赋值操作符，因为union中的成员可能会导致问题
-            Token(const Token&) = delete;
-            Token& operator=(const Token&) = delete;
+            // 数值构造函数
+            Token(TokenKind k, unsigned ln, unsigned col, const NumberValue& value)
+                : kind(k), line(ln), column(col), intValue(0) {
+                if (value.kind == NumberKind::Integer) {
+                    intValue = value.value;
+                } else {
+                    floatValue = value.value;
+                }
+            }
 
-            // 允许移动构造和赋值
-            Token(Token&&) = default;
-            Token& operator=(Token&&) = default;
+            // 设置文本内容
+            void setText(std::string_view sv) {
+                textStorage = std::string(sv);
+                text = textStorage;
+            }
+
+            void setText(std::string&& str) {
+                textStorage = std::move(str);
+                text = textStorage;
+            }
+
+            void setText(const std::string& str) {
+                textStorage = str;
+                text = textStorage;
+            }
+
+            // 拷贝构造函数
+            Token(const Token& other)
+                : kind(other.kind),
+                  textStorage(other.textStorage),
+                  line(other.line),
+                  column(other.column),
+                  filename(other.filename),
+                  intValue(other.intValue) {
+                text = textStorage;
+            }
+
+            // 拷贝赋值操作符
+            Token& operator=(const Token& other) {
+                if (this != &other) {
+                    kind = other.kind;
+                    textStorage = other.textStorage;
+                    text = textStorage;
+                    line = other.line;
+                    column = other.column;
+                    filename = other.filename;
+                    intValue = other.intValue;
+                }
+                return *this;
+            }
+
+            // 移动构造函数
+            Token(Token&& other) noexcept
+                : kind(other.kind),
+                  textStorage(std::move(other.textStorage)),
+                  line(other.line),
+                  column(other.column),
+                  filename(std::move(other.filename)),
+                  intValue(other.intValue) {
+                text = textStorage;
+            }
+
+            // 移动赋值操作符
+            Token& operator=(Token&& other) noexcept {
+                if (this != &other) {
+                    kind = other.kind;
+                    textStorage = std::move(other.textStorage);
+                    text = textStorage;
+                    line = other.line;
+                    column = other.column;
+                    filename = std::move(other.filename);
+                    intValue = other.intValue;
+                }
+                return *this;
+            }
 
             // Token类型判断函数
             inline bool isKeyword() const;

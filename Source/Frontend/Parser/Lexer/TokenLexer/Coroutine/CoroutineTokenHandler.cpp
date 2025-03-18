@@ -1,4 +1,4 @@
-#include "Frontend/Parser/Lexer/TokenLexer/CoroutineTokenHandler.h"
+#include "Frontend/Parser/Lexer/TokenLexer/Coroutine/CoroutineTokenHandler.h"
 
 namespace rp {
     namespace frontend {

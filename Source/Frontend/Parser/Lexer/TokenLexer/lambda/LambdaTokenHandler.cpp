@@ -1,4 +1,4 @@
-#include "Frontend/Parser/Lexer/TokenLexer/LambdaTokenHandler.h"
+#include "Frontend/Parser/Lexer/TokenLexer/lambda/LambdaTokenHandler.h"
 
 namespace rp {
     namespace frontend {

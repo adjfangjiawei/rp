@@ -1,5 +1,6 @@
-
 #include "Frontend/Parser/Lexer/MainLexer/Lexer.h"
+
+#include <cstring>
 
 #include "Frontend/Parser/Lexer/LiteralsLexer/CharacterLiteralLexer.h"
 #include "Frontend/Parser/Lexer/LiteralsLexer/NumberLiteralLexer.h"
@@ -9,49 +10,48 @@
 namespace rp {
     namespace frontend {
 
-        Lexer::Lexer()
-            : source(nullptr),
-              currentPos(0),
-              currentLine(1),
-              currentColumn(1),
-              sourceLength(0),
-              tokenStart(0),
-              tokenLine(1),
-              tokenColumn(1) {
-            diagnostics = std::make_shared<DiagnosticEngine>();
-            scanner = std::make_unique<Scanner>(diagnostics.get());
-            KeywordManager::initialize();
+        std::string Lexer::getErrorContext(size_t line, size_t column, size_t context_lines) const {
+            std::string result;
+            size_t start_line = (line > context_lines) ? line - context_lines : 1;
+            size_t end_line = line + context_lines;
+            size_t current_line = 1;
+            size_t pos = 0;
+
+            while (pos < sourceLength && current_line <= end_line) {
+                if (current_line >= start_line) {
+                    // 添加行号
+                    result += std::to_string(current_line) + " | ";
+
+                    // 添加该行内容
+                    while (pos < sourceLength && source[pos] != '\n') {
+                        result += source[pos++];
+                    }
+                    result += '\n';
+
+                    // 如果是错误所在行，添加错误指示符
+                    if (current_line == line) {
+                        result += "  | ";
+                        for (size_t i = 1; i < column; ++i) {
+                            result += ' ';
+                        }
+                        result += "^\n";
+                    }
+                }
+
+                // 移动到下一行
+                while (pos < sourceLength && source[pos] != '\n') {
+                    pos++;
+                }
+                if (pos < sourceLength && source[pos] == '\n') {
+                    pos++;
+                }
+                current_line++;
+            }
+
+            return result;
         }
 
-        Lexer::Lexer(DiagnosticEngine* diagEngine)
-            : source(nullptr),
-              currentPos(0),
-              currentLine(1),
-              currentColumn(1),
-              sourceLength(0),
-              tokenStart(0),
-              tokenLine(1),
-              tokenColumn(1) {
-            diagnostics = std::shared_ptr<DiagnosticEngine>(diagEngine);
-            scanner = std::make_unique<Scanner>(diagEngine);
-            KeywordManager::initialize();
-        }
-
-        void Lexer::setSource(const char* src, size_t length, const std::string& filename) {
-            source = src;
-            sourceLength = length;
-            this->filename = filename;
-            currentPos = 0;
-            currentLine = 1;
-            currentColumn = 1;
-            tokenStart = 0;
-            tokenLine = 1;
-            tokenColumn = 1;
-
-            scanner->setSource(src, length, filename);
-        }
-
-        Token Lexer::nextToken() {
+        Token Lexer::getNextTokenFromSource() {
             // 跳过空白字符和注释
             skipWhitespaceAndComments();
 
@@ -63,94 +63,101 @@ namespace rp {
                 return createToken(TokenKind::EndOfFile);
             }
 
-            char c = source[currentPos];
-
-            // 更新扫描器的位置
-            scanner->setPosition(currentPos, currentLine, currentColumn);
-
-            // 标识符或关键字
-            if (scanner->isIdentifierStart(c)) {
-                Token token = scanner->scanIdentifier();
-                updatePositionFromScanner();
-                return token;
-            }
-
-            // 数字
-            if (isdigit(c) || (c == '.' && currentPos + 1 < sourceLength && isdigit(source[currentPos + 1]))) {
-                NumberLiteralLexer numberLexer(diagnostics.get());
-                numberLexer.setSource(source, sourceLength, filename);
-                numberLexer.currentPos = currentPos;
-                numberLexer.currentLine = currentLine;
-                numberLexer.currentColumn = currentColumn;
-                Token token = numberLexer.scan();
-                currentPos = numberLexer.currentPos;
-                currentLine = numberLexer.currentLine;
-                currentColumn = numberLexer.currentColumn;
-                return token;
-            }
-
-            // 字符字面量
-            if (c == '\'') {
-                CharacterLiteralLexer charLexer(diagnostics.get());
-                charLexer.setSource(source, sourceLength, filename);
-                charLexer.currentPos = currentPos;
-                charLexer.currentLine = currentLine;
-                charLexer.currentColumn = currentColumn;
-                Token token = charLexer.scan();
-                currentPos = charLexer.currentPos;
-                currentLine = charLexer.currentLine;
-                currentColumn = charLexer.currentColumn;
-                return token;
-            }
-
-            // 字符串字面量
-            if (c == '"') {
-                StringLiteralLexer stringLexer(diagnostics.get());
-                stringLexer.setSource(source, sourceLength, filename);
-                stringLexer.currentPos = currentPos;
-                stringLexer.currentLine = currentLine;
-                stringLexer.currentColumn = currentColumn;
-                Token token = stringLexer.scan();
-                currentPos = stringLexer.currentPos;
-                currentLine = stringLexer.currentLine;
-                currentColumn = stringLexer.currentColumn;
-                return token;
-            }
-
-            // 运算符和标点符号
-            Token token = scanner->scanOperatorOrPunctuation();
-            updatePositionFromScanner();
-            return token;
-        }
-
-        Token Lexer::peekToken() {
-            // 保存当前状态
-            size_t savedPos = currentPos;
-            size_t savedLine = currentLine;
-            size_t savedColumn = currentColumn;
-            size_t savedTokenStart = tokenStart;
-            size_t savedTokenLine = tokenLine;
-            size_t savedTokenColumn = tokenColumn;
-
-            // 获取下一个token
-            Token token = nextToken();
-
-            // 恢复状态
-            currentPos = savedPos;
-            currentLine = savedLine;
-            currentColumn = savedColumn;
-            tokenStart = savedTokenStart;
-            tokenLine = savedTokenLine;
-            tokenColumn = savedTokenColumn;
-
-            return token;
-        }
-
-        void Lexer::skipWhitespaceAndComments() {
-            while (currentPos < sourceLength) {
+            try {
                 char c = source[currentPos];
 
-                // 跳过空白字符
+                // 更新扫描器的位置
+                scanner->setPosition(currentPos, currentLine, currentColumn);
+
+                // 标识符或关键字
+                if (scanner->isIdentifierStart(c)) {
+                    Token token = scanner->scanIdentifier();
+                    updatePositionFromScanner();
+                    return token;
+                }
+
+                // 数字
+                if (isdigit(c) || (c == '.' && currentPos + 1 < sourceLength && isdigit(source[currentPos + 1]))) {
+                    NumberLiteralLexer numberLexer(diagnostics.get());
+                    numberLexer.setSource(source, sourceLength, filename);
+                    numberLexer.currentPos = currentPos;
+                    numberLexer.currentLine = currentLine;
+                    numberLexer.currentColumn = currentColumn;
+                    Token token = numberLexer.scan();
+                    currentPos = numberLexer.currentPos;
+                    currentLine = numberLexer.currentLine;
+                    currentColumn = numberLexer.currentColumn;
+                    return token;
+                }
+
+                // 字符字面量
+                if (c == '\'') {
+                    CharacterLiteralLexer charLexer(diagnostics.get());
+                    charLexer.setSource(source, sourceLength, filename);
+                    charLexer.currentPos = currentPos;
+                    charLexer.currentLine = currentLine;
+                    charLexer.currentColumn = currentColumn;
+                    Token token = charLexer.scan();
+                    currentPos = charLexer.currentPos;
+                    currentLine = charLexer.currentLine;
+                    currentColumn = charLexer.currentColumn;
+                    return token;
+                }
+
+                // 字符串字面量
+                if (c == '"' || (c == 'L' && currentPos + 1 < sourceLength && source[currentPos + 1] == '"') ||
+                    (c == 'u' && currentPos + 1 < sourceLength && source[currentPos + 1] == '"') ||
+                    (c == 'U' && currentPos + 1 < sourceLength && source[currentPos + 1] == '"') ||
+                    (c == 'u' && currentPos + 1 < sourceLength && source[currentPos + 1] == '8' &&
+                     currentPos + 2 < sourceLength && source[currentPos + 2] == '"') ||
+                    (c == 'R' && currentPos + 1 < sourceLength && source[currentPos + 1] == '"')) {
+                    StringLiteralLexer stringLexer(diagnostics.get());
+                    stringLexer.setSource(source, sourceLength, filename);
+                    stringLexer.currentPos = currentPos;
+                    stringLexer.currentLine = currentLine;
+                    stringLexer.currentColumn = currentColumn;
+                    Token token = stringLexer.scan();
+                    currentPos = stringLexer.currentPos;
+                    currentLine = stringLexer.currentLine;
+                    currentColumn = stringLexer.currentColumn;
+                    return token;
+                }
+
+                // 运算符和标点符号
+                Token token = scanner->scanOperatorOrPunctuation();
+                updatePositionFromScanner();
+                return token;
+
+            } catch (const std::exception& e) {
+                reportError(e.what(), currentLine, currentColumn);
+                recoverFromError();
+                return createToken(TokenKind::Invalid);
+            }
+        }
+
+        void Lexer::fillTokenCache(size_t n) {
+            while (tokenCache.size() < n) {
+                Token token = getNextTokenFromSource();
+                tokenCache.push_back(token);
+                if (token.kind == TokenKind::EndOfFile) {
+                    break;
+                }
+            }
+        }
+
+        void Lexer::reportError(const std::string& message, size_t line, size_t column) {
+            std::string errorContext = getErrorContext(line, column);
+            SourceLocation loc;
+            loc.filename = filename;
+            loc.line = line;
+            loc.column = column;
+            diagnostics->report(DiagnosticLevel::Error, loc, message + "\n" + errorContext);
+        }
+
+        void Lexer::recoverFromError() {
+            // 简单的错误恢复：跳过直到找到下一个有效的token开始字符
+            while (currentPos < sourceLength) {
+                char c = source[currentPos];
                 if (isspace(c)) {
                     if (c == '\n') {
                         currentLine++;
@@ -162,74 +169,15 @@ namespace rp {
                     continue;
                 }
 
-                // 跳过单行注释
-                if (c == '/' && currentPos + 1 < sourceLength && source[currentPos + 1] == '/') {
-                    currentPos += 2;
-                    currentColumn += 2;
-                    while (currentPos < sourceLength && source[currentPos] != '\n') {
-                        currentPos++;
-                        currentColumn++;
-                    }
-                    continue;
+                // 检查是否是可能的token开始
+                if (scanner->isIdentifierStart(c) || isdigit(c) || c == '"' || c == '\'' || c == '_' ||
+                    strchr("+-*/%<>=!&|^~.,:;()[]{}#", c)) {
+                    break;
                 }
 
-                // 跳过多行注释
-                if (c == '/' && currentPos + 1 < sourceLength && source[currentPos + 1] == '*') {
-                    currentPos += 2;
-                    currentColumn += 2;
-                    while (currentPos + 1 < sourceLength) {
-                        if (source[currentPos] == '*' && source[currentPos + 1] == '/') {
-                            currentPos += 2;
-                            currentColumn += 2;
-                            break;
-                        }
-                        if (source[currentPos] == '\n') {
-                            currentLine++;
-                            currentColumn = 1;
-                        } else {
-                            currentColumn++;
-                        }
-                        currentPos++;
-                    }
-                    continue;
-                }
-
-                break;
+                currentPos++;
+                currentColumn++;
             }
-        }
-
-        Token Lexer::createToken(TokenKind kind, const std::string& text, bool consumeToken) {
-            Token token;
-            token.kind = kind;
-            token.text = text;
-            token.filename = filename;
-            token.line = tokenLine;
-            token.column = tokenColumn;
-            if (text.empty()) {
-                token.text = std::string_view(source + tokenStart, currentPos - tokenStart);
-            }
-            if (!consumeToken) {
-                restoreToTokenStart();
-            }
-            return token;
-        }
-
-        void Lexer::saveTokenStart() {
-            tokenStart = currentPos;
-            tokenLine = currentLine;
-            tokenColumn = currentColumn;
-        }
-
-        void Lexer::restoreToTokenStart() {
-            currentPos = tokenStart;
-            currentLine = tokenLine;
-            currentColumn = tokenColumn;
-        }
-
-        void Lexer::updatePositionFromScanner() {
-            currentPos = scanner->getCurrentPos();
-            currentLine = scanner->getCurrentLine();
-            currentColumn = scanner->getCurrentColumn();
         }
 
     }  // namespace frontend

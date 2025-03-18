@@ -1,8 +1,9 @@
-
 #pragma once
 
+#include <deque>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "Frontend/Diagnostic/Diagnostic.h"
 #include "Frontend/Parser/Lexer/MainLexer/Scanner.h"
@@ -27,6 +28,18 @@ namespace rp {
             // 预览下一个token而不消费它
             Token peekToken();
 
+            // 预览第n个token而不消费它
+            Token peekToken(size_t n);
+
+            // 回退一个token
+            void ungetToken(const Token& token);
+
+            // 获取当前位置的行列信息
+            std::pair<size_t, size_t> getCurrentPosition() const;
+
+            // 获取错误上下文
+            std::string getErrorContext(size_t line, size_t column, size_t context_lines = 2) const;
+
           protected:
             // 源代码信息
             const char* source;
@@ -43,6 +56,10 @@ namespace rp {
             size_t tokenLine;
             size_t tokenColumn;
 
+            // Token缓存
+            std::deque<Token> tokenCache;
+            static const size_t MAX_LOOKAHEAD = 3;
+
           private:
             // 组件
             std::unique_ptr<Scanner> scanner;
@@ -54,6 +71,14 @@ namespace rp {
             void saveTokenStart();
             void restoreToTokenStart();
             void updatePositionFromScanner();
+
+            // 错误处理
+            void reportError(const std::string& message, size_t line, size_t column);
+            void recoverFromError();
+
+            // 缓存管理
+            Token getNextTokenFromSource();
+            void fillTokenCache(size_t n);
         };
 
     }  // namespace frontend
