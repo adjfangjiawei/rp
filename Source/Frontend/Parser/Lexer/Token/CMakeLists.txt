@@ -9,6 +9,7 @@ set(TOKEN_HEADERS
 
 set(TOKEN_SOURCES
     TokenKind.cpp
+    TokenUtils.cpp
 )
 
 # 改为STATIC库，因为现在有源文件实现

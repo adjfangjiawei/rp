@@ -14,19 +14,30 @@ namespace rp {
                                                         std::string &error) {
             long long result = 0;
             bool hasDigits = false;
-            bool lastWasSeparator = true;  // 不允许数字开头就是分隔符
-            bool hasDigitsAfterSeparator = false;
+            bool lastWasSeparator = false;        // 初始化为false，因为我们还没有遇到任何字符
+            bool hasDigitsAfterSeparator = true;  // 初始化为true，因为我们还没有遇到分隔符
 
             while (pos < input.length()) {
                 char c = input[pos];
 
+                // 处理数字分隔符
                 if (isNumberSeparator(c)) {
+                    // 检查是否满足分隔符的使用条件
+                    if (!hasDigits) {
+                        error = "Number separator cannot appear at the start";
+                        return false;
+                    }
                     if (lastWasSeparator) {
                         error = "Invalid consecutive number separators";
                         return false;
                     }
-                    if (!hasDigits) {
-                        error = "Number separator cannot appear at the start";
+                    // 检查分隔符后是否还有数字
+                    if (pos + 1 >= input.length()) {
+                        error = "Number separator cannot appear at the end of integer literal";
+                        return false;
+                    }
+                    if (!isDigit(input[pos + 1])) {
+                        error = "Number separator must be followed by a digit";
                         return false;
                     }
                     lastWasSeparator = true;
@@ -54,8 +65,19 @@ namespace rp {
                 pos++;
             }
 
-            if (!validateSeparatorUsage(
-                    hasDigits, lastWasSeparator, hasDigitsAfterSeparator, "integer literal", error)) {
+            // 最终验证
+            if (!hasDigits) {
+                error = "Integer literal must contain at least one digit";
+                return false;
+            }
+
+            if (lastWasSeparator || !hasDigitsAfterSeparator) {
+                error = "Number separator cannot appear at the end of integer literal";
+                return false;
+            }
+
+            // 验证分隔符的使用是否合法
+            if (!validateSeparatorUsage(hasDigits, false, true, "integer literal", error)) {
                 return false;
             }
 

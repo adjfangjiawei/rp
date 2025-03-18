@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include <string>
@@ -12,7 +11,7 @@ namespace rp {
 
         class NumberLiteralLexer {
           public:
-            explicit NumberLiteralLexer(DiagnosticEngine *diagnostics) : diagnostics(diagnostics) {}
+            explicit NumberLiteralLexer(std::shared_ptr<DiagnosticEngine> diagnostics) : diagnostics(diagnostics) {}
 
             // 设置源代码信息
             void setSource(const char *src, size_t length, const std::string &file) {
@@ -29,11 +28,22 @@ namespace rp {
             size_t currentLine = 1;
             size_t currentColumn = 1;
 
+            // 位置设置和获取
+            void setPosition(size_t pos, size_t line, size_t column) {
+                currentPos = pos;
+                currentLine = line;
+                currentColumn = column;
+            }
+
+            size_t getCurrentPos() const { return currentPos; }
+            size_t getCurrentLine() const { return currentLine; }
+            size_t getCurrentColumn() const { return currentColumn; }
+
           private:
             const char *source = nullptr;
             size_t sourceLength = 0;
             std::string filename;
-            DiagnosticEngine *diagnostics;
+            std::shared_ptr<DiagnosticEngine> diagnostics;
 
             // 处理所有类型的数字字面量
             bool processNumberLiteral(const std::string &input, size_t &pos, NumberValue &value, std::string &error);
@@ -46,6 +56,12 @@ namespace rp {
 
             // 检查是否是浮点数
             bool isFloatingPointNumber(const std::string &input, size_t pos);
+
+            // 处理类型后缀
+            bool processTypeSuffix(const std::string &input, size_t &pos, NumberValue &value, std::string &error);
+
+            // 验证值范围
+            bool validateValueRange(const NumberValue &value, std::string &error);
         };
 
     }  // namespace frontend

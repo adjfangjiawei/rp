@@ -4,17 +4,43 @@
 
 #include "Frontend/Parser/Lexer/MainLexer/Lexer.h"
 #include "Frontend/Parser/Lexer/Token/Token.h"
-#include "Frontend/Parser/Lexer/Utils/UnicodeEscape.h"
+#include "Frontend/Parser/Lexer/Unicode/Core/UnicodeCore.h"
+#include "Frontend/Parser/Lexer/Unicode/Escape/UnicodeEscape.h"
 
 namespace rp {
     namespace frontend {
 
         class CharacterLiteralLexer : public Lexer {
           public:
-            explicit CharacterLiteralLexer(DiagnosticEngine *diagEngine = nullptr) : Lexer(diagEngine) {}
+            explicit CharacterLiteralLexer(std::shared_ptr<DiagnosticEngine> diagEngine = nullptr)
+                : Lexer(diagEngine) {}
+
+            // 位置管理函数
+            void setPosition(size_t pos, size_t line, size_t column) {
+                currentPos = pos;
+                currentLine = line;
+                currentColumn = column;
+            }
+
+            size_t getCurrentPos() const { return currentPos; }
+            size_t getCurrentLine() const { return currentLine; }
+            size_t getCurrentColumn() const { return currentColumn; }
 
             // 扫描字符字面量并返回对应的Token
             Token scan() {
+                if (currentPos >= sourceLength) {
+                    return createToken(TokenKind::Invalid);
+                }
+
+                // 保存token的起始位置
+                saveTokenStart();
+
+                // 检查是否是字符字面量的开始
+                if (source[currentPos] != '\'') {
+                    currentPos++;  // 确保至少前进一个位置
+                    return createToken(TokenKind::Invalid);
+                }
+
                 std::string input(source + currentPos, sourceLength - currentPos);
                 size_t pos = 0;
                 long long value = 0;
@@ -27,10 +53,24 @@ namespace rp {
                     return token;
                 }
 
-                // 如果处理失败，返回Invalid token
-                Token token(TokenKind::Invalid);
-                currentPos += pos;
-                return token;
+                // 如果处理失败，设置诊断信息
+                if (auto diag = getDiagnostics()) {
+                    SourceLocation loc;
+                    loc.line = currentLine;
+                    loc.column = currentColumn;
+                    loc.filename = filename;
+                    diag->report(DiagnosticLevel::Error, loc, "Error in character literal: " + error);
+                }
+
+                // 错误恢复：找到下一个单引号或至少前进一个字符
+                size_t nextQuote = input.find('\'', 1);
+                if (nextQuote != std::string::npos) {
+                    currentPos += nextQuote + 1;
+                } else {
+                    currentPos += 1;
+                }
+
+                return createToken(TokenKind::Invalid);
             }
 
             // 处理字符字面量
@@ -45,12 +85,6 @@ namespace rp {
           private:
             // 处理转义序列
             static bool processEscapeSequence(const std::string &input, size_t &pos, long long &value);
-
-            // 处理Unicode字符
-            static bool processUnicodeChar(const std::string &input, size_t &pos, long long &value);
-
-            // 处理UTF-8编码
-            static bool processUtf8Encoding(unsigned int codepoint, long long &value);
         };
 
     }  // namespace frontend

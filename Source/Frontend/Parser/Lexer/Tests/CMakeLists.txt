@@ -15,8 +15,15 @@ find_package(GTest REQUIRED)
 
 target_link_libraries(LexerTests
     PRIVATE
-    Lexer
-    frontend
+    MainLexer
+    LexerLiterals
+    LexerToken
+    TokenLexer
+    LexerErrorRecovery
+    LexerTrace
+    LexerUtils
+    Diagnostic
+    LexerUnicode
     GTest::gtest
     GTest::gtest_main
 )
@@ -32,7 +39,15 @@ find_package(benchmark REQUIRED)
 
 target_link_libraries(LexerBenchmarks
     PRIVATE
-    Lexer
+    MainLexer
+    LexerLiterals
+    LexerToken
+    TokenLexer
+    LexerErrorRecovery
+    LexerTrace
+    LexerUtils
+    Diagnostic
+    LexerUnicode
     benchmark::benchmark
     benchmark::benchmark_main
 )
@@ -46,9 +61,17 @@ add_executable(LexerCoverage
 
 target_link_libraries(LexerCoverage
     PRIVATE
-    Lexer
+    MainLexer
+    LexerLiterals
+    LexerToken
+    TokenLexer
+    LexerErrorRecovery
+    LexerTrace
+    LexerUtils
+    Diagnostic
     GTest::gtest
     GTest::gtest_main
+    LexerUnicode
 )
 
 # Set include directories for all test targets

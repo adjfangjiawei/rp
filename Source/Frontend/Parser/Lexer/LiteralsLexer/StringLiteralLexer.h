@@ -1,66 +1,70 @@
-#pragma once
+#ifndef RP_STRING_LITERAL_LEXER_H
+#define RP_STRING_LITERAL_LEXER_H
+
 #include <memory>
 #include <string>
 
-#include "Frontend/Parser/Lexer/MainLexer/Lexer.h"
+#include "Frontend/Diagnostic/Diagnostic.h"
 #include "Frontend/Parser/Lexer/Token/Token.h"
-#include "Frontend/Parser/Lexer/Utils/UnicodeEscape.h"
+#include "StringLiteralLexer/DiagnosticsHandler.h"
+#include "StringLiteralLexer/PrefixProcessor.h"
+#include "StringLiteralLexer/StringValidator.h"
+#include "StringLiteralLexer/TokenCreator.h"
+#include "StringLiteralLexer/UnicodeProcessor.h"
 
 namespace rp {
     namespace frontend {
+        struct StringScanResult {
+            Token token;                        // 处理后的Token
+            bool success;                       // 是否成功
+            std::string error;                  // 错误信息
+            size_t errorPosition;               // 错误位置
+            bool hasWarnings;                   // 是否有警告
+            std::vector<std::string> warnings;  // 警告信息列表
+            size_t consumed;                    // 消耗的字符数
+        };
 
-        class StringLiteralLexer : public Lexer {
+        class StringLiteralLexer {
           public:
-            explicit StringLiteralLexer(DiagnosticEngine *diagEngine = nullptr) : Lexer(diagEngine) {}
+            explicit StringLiteralLexer(const std::shared_ptr<DiagnosticEngine>& diagnostics);
 
-            // 扫描字符串字面量并返回对应的Token
-            Token scan() {
-                std::string input(source + currentPos, sourceLength - currentPos);
-                std::string output;
-                std::string error;
-                size_t pos = 0;
+            void setSource(const std::string& src, size_t length, const std::string& filename);
+            StringScanResult scan();
+            void setValidationOptions(const StringValidationOptions& options);
 
-                // 检查是否是原始字符串字面量
-                if (input[0] == 'R') {
-                    if (processRawStringLiteral(input, output, error)) {
-                        Token token(TokenKind::StringLiteral);
-                        token.text = output;
-                        currentPos += pos;
-                        return token;
-                    }
-                } else {
-                    // 处理普通字符串字面量
-                    output = processEscapeSequences(input);
-                    if (validateStringLiteral(output, error)) {
-                        Token token(TokenKind::StringLiteral);
-                        token.text = output;
-                        currentPos += pos;
-                        return token;
-                    }
-                }
-
-                // 如果处理失败，返回Invalid token
-                Token token(TokenKind::Invalid);
-                currentPos += pos;
-                return token;
-            }
-
-            // 处理字符串字面量的转义序列
-            static std::string processEscapeSequences(const std::string &raw);
-
-            // 验证字符串字面量的合法性
-            static bool validateStringLiteral(const std::string &str, std::string &error);
-
-            // 处理原始字符串字面量 (R"(...)")
-            static bool processRawStringLiteral(const std::string &input, std::string &output, std::string &error);
+            // 位置信息访问器
+            size_t getCurrentPos() const { return currentPos; }
+            size_t getCurrentLine() const { return currentLine; }
+            size_t getCurrentColumn() const { return currentColumn; }
+            void setPosition(size_t pos, size_t line, size_t column);
 
           private:
-            // 处理单个转义序列
-            static bool processEscapeSequence(const std::string &input, size_t &pos, std::string &output);
+            // 源代码信息
+            std::string source;
+            size_t sourceLength;
+            std::string filename;
 
-            // 处理Unicode转义序列
-            static bool processUnicodeEscape(const std::string &input, size_t &pos, std::string &output);
+            // 当前位置信息
+            size_t currentPos;
+            size_t currentLine;
+            size_t currentColumn;
+
+            // 组件
+            StringValidationOptions validationOptions{};
+            std::unique_ptr<DiagnosticsHandler> diagnosticsHandler;
+            std::unique_ptr<StringValidator> stringValidator;
+
+            // 处理方法
+            StringScanResult processRawString(const std::string& source, size_t startPos, StringPrefix prefix);
+            StringScanResult processNormalString(const std::string& source, size_t startPos, StringPrefix prefix);
+            StringScanResult processEscapeSequence(const std::string& source, size_t startPos);
+
+            // 位置更新辅助方法
+            void updatePositionInfo(size_t consumed);
+            void updatePositionForContent(const std::string_view& content);
         };
 
     }  // namespace frontend
 }  // namespace rp
+
+#endif  // RP_STRING_LITERAL_LEXER_H

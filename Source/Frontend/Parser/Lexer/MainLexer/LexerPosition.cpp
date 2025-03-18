@@ -1,41 +1,30 @@
 
+#include <cstring>
+
 #include "Frontend/Parser/Lexer/MainLexer/Lexer.h"
 
 namespace rp {
     namespace frontend {
 
-        Token Lexer::createToken(TokenKind kind, const std::string& text, bool consumeToken) {
-            Token token;
-            token.kind = kind;
-            token.text = text;
-            token.filename = filename;
-            token.line = tokenLine;
-            token.column = tokenColumn;
-            if (text.empty()) {
-                token.text = std::string_view(source + tokenStart, currentPos - tokenStart);
+        char Lexer::peekChar(size_t offset) const {
+            size_t pos = currentPos + offset;
+            return (pos < sourceLength) ? source[pos] : '\0';
+        }
+
+        void Lexer::recoverFromError() {
+            // 尝试同步到下一个有效的token开始位置
+            skipUntilNextToken();
+
+            // 确保我们至少前进了一个字符
+            if (currentPos == tokenStart) {
+                currentPos++;
+                if (getCurrentChar() == '\n') {
+                    currentLine++;
+                    currentColumn = 1;
+                } else {
+                    currentColumn++;
+                }
             }
-            if (!consumeToken) {
-                restoreToTokenStart();
-            }
-            return token;
-        }
-
-        void Lexer::saveTokenStart() {
-            tokenStart = currentPos;
-            tokenLine = currentLine;
-            tokenColumn = currentColumn;
-        }
-
-        void Lexer::restoreToTokenStart() {
-            currentPos = tokenStart;
-            currentLine = tokenLine;
-            currentColumn = tokenColumn;
-        }
-
-        void Lexer::updatePositionFromScanner() {
-            currentPos = scanner->getCurrentPos();
-            currentLine = scanner->getCurrentLine();
-            currentColumn = scanner->getCurrentColumn();
         }
 
     }  // namespace frontend

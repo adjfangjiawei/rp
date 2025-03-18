@@ -4,6 +4,7 @@ add_library(MainLexer
     LexerTokenization.cpp
     LexerWhitespace.cpp
     LexerPosition.cpp
+    Lexer.cpp
     Lexer.h
     KeywordManager.cpp
     KeywordManager.h

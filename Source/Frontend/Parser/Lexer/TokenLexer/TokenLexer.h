@@ -1,22 +1,21 @@
-
 #pragma once
 #include <memory>
 #include <queue>
 
 #include "Frontend/Parser/Lexer/MainLexer/Lexer.h"
 #include "Frontend/Parser/Lexer/Token/Token.h"
-#include "Frontend/Parser/Lexer/TokenLexer/CommentHandler.h"
-#include "Frontend/Parser/Lexer/TokenLexer/CoroutineTokenHandler.h"
-#include "Frontend/Parser/Lexer/TokenLexer/LambdaTokenHandler.h"
-#include "Frontend/Parser/Lexer/TokenLexer/PreprocessorHandler.h"
-#include "Frontend/Parser/Lexer/TokenLexer/TemplateTokenHandler.h"
+#include "Frontend/Parser/Lexer/TokenLexer/Comment/CommentHandler.h"
+#include "Frontend/Parser/Lexer/TokenLexer/Coroutine/CoroutineTokenHandler.h"
+#include "Frontend/Parser/Lexer/TokenLexer/Preprocess/PreprocessorHandler.h"
+#include "Frontend/Parser/Lexer/TokenLexer/Template/TemplateTokenHandler.h"
+#include "Frontend/Parser/Lexer/TokenLexer/lambda/LambdaTokenHandler.h"
 
 namespace rp {
     namespace frontend {
 
         class TokenLexer {
           public:
-            explicit TokenLexer(std::shared_ptr<Lexer> baseLexer);
+            explicit TokenLexer(std::shared_ptr<Lexer> baseLexer, DiagnosticEngine* diagEngine);
 
             // 获取下一个token
             Token nextToken();
@@ -29,6 +28,9 @@ namespace rp {
             void ungetToken(Token&& token);
 
           private:
+            // 更新上下文状态
+            void updateContextState(const Token& token);
+
             std::shared_ptr<Lexer> lexer;
             std::queue<Token> tokenBuffer;
 

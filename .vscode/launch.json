@@ -4,7 +4,7 @@
             "type": "lldb",
             "request": "launch",
             "name": "Launch",
-            "program": "${workspaceFolder}/build/bin/CoreBaseTests",
+            "program": "${workspaceFolder}/Build/example/bin/string_literal_example",
             "args": [],
             "cwd": "${workspaceFolder}",
         }

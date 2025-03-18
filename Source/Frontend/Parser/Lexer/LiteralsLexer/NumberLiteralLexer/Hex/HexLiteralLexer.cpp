@@ -1,6 +1,7 @@
 
 #include "Frontend/Parser/Lexer/LiteralsLexer/NumberLiteralLexer/Hex/HexLiteralLexer.h"
 
+#include <cmath>
 #include <limits>
 
 #include "Frontend/Parser/Lexer/LiteralsLexer/NumberLiteralLexer/Suffix/SuffixProcessor.h"
@@ -13,6 +14,10 @@ namespace rp {
                                                 NumberValue &value,
                                                 std::string &error) {
             long long result = 0;
+            double fraction = 0.0;
+            bool hasExponent = false;
+            int exponent = 0;
+            bool hasDot = false;
             bool hasDigits = false;
             bool lastWasSeparator = true;  // 不允许数字开头就是分隔符
             bool hasDigitsAfterSeparator = false;
@@ -35,6 +40,53 @@ namespace rp {
                     continue;
                 }
 
+                if (c == '.') {
+                    if (hasDot) {
+                        error = "Multiple decimal points in hexadecimal literal";
+                        return false;
+                    }
+                    hasDot = true;
+                    pos++;
+                    continue;
+                }
+
+                if (c == 'p' || c == 'P') {
+                    if (hasExponent) {
+                        error = "Multiple exponents in hexadecimal literal";
+                        return false;
+                    }
+                    pos++;
+                    if (pos >= input.length()) {
+                        error = "Expected exponent value after 'p'";
+                        return false;
+                    }
+
+                    // 处理指数的符号
+                    bool negativeExponent = false;
+                    if (input[pos] == '+' || input[pos] == '-') {
+                        negativeExponent = (input[pos] == '-');
+                        pos++;
+                    }
+
+                    // 读取指数值
+                    if (pos >= input.length() || !std::isdigit(input[pos])) {
+                        error = "Expected decimal digits after exponent";
+                        return false;
+                    }
+
+                    while (pos < input.length() && std::isdigit(input[pos])) {
+                        exponent = exponent * 10 + (input[pos] - '0');
+                        pos++;
+                    }
+
+                    if (negativeExponent) {
+                        exponent = -exponent;
+                    }
+
+                    hasExponent = true;
+                    continue;
+                }
+
                 if (!isHexDigit(c)) {
                     break;
                 }
@@ -49,11 +101,17 @@ namespace rp {
                     return false;
                 }
 
-                if (!checkHexOverflow(result, error)) {
-                    return false;
+                if (hasDot) {
+                    // 处理小数部分
+                    fraction = fraction / 16.0 + (digitVal / 16.0);
+                } else {
+                    // 处理整数部分
+                    if (!checkHexOverflow(result, error)) {
+                        return false;
+                    }
+                    result = (result << 4) | digitVal;
                 }
 
-                result = (result << 4) | digitVal;
                 hasDigits = true;
                 lastWasSeparator = false;
                 pos++;
@@ -69,12 +127,18 @@ namespace rp {
                 return false;
             }
 
+            // 计算最终值
+            double finalValue = result + fraction;
+            if (hasExponent) {
+                finalValue *= std::pow(2.0, exponent);
+            }
+
             if (!SuffixProcessor::processSuffix(input, pos, value, error)) {
                 return false;
             }
 
-            value.kind = NumberKind::Hexadecimal;
-            value.value = result;
+            value.kind = hasDot || hasExponent ? NumberKind::FloatingPoint : NumberKind::Hexadecimal;
+            value.value = finalValue;
             return true;
         }
 

@@ -1,7 +1,7 @@
 add_library(Diagnostic Diagnostic.cpp)
 
 target_include_directories(Diagnostic
-    PRIVATE
+    PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 

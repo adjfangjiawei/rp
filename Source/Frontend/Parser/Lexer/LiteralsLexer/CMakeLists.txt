@@ -13,6 +13,15 @@ add_library(LexerLiterals
     ${CMAKE_CURRENT_SOURCE_DIR}/NumberLiteralLexer/Integer/IntegerLiteralLexer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/NumberLiteralLexer/Octal/OctalLiteralLexer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/NumberLiteralLexer/Suffix/SuffixProcessor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/StringLiteralLexer/StringLiteralUtils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/StringLiteralLexer/RawStringProcessor.cpp
+     ${CMAKE_CURRENT_SOURCE_DIR}/StringLiteralLexer/NormalStringProcessor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/StringLiteralLexer/EscapeSequenceProcessor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/StringLiteralLexer/DiagnosticsHandler.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/StringLiteralLexer/PrefixProcessor.cpp 
+    ${CMAKE_CURRENT_SOURCE_DIR}/StringLiteralLexer/StringValidator.cpp 
+    ${CMAKE_CURRENT_SOURCE_DIR}/StringLiteralLexer/TokenCreator.cpp 
+    ${CMAKE_CURRENT_SOURCE_DIR}/StringLiteralLexer/UnicodeProcessor.cpp
 )
 
 # Set include directories for this target

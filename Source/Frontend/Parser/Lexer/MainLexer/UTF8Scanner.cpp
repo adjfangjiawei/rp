@@ -1,89 +1,253 @@
 
 #include "UTF8Scanner.h"
 
-#include "Frontend/Parser/Lexer/Utils/Unicode.h"
+#include "Frontend/Parser/Lexer/Unicode/Unicode.h"
 
 namespace rp {
     namespace frontend {
 
-        std::string UTF8Scanner::scanUTF8Sequence() {
-            std::string result;
-            unsigned char first = static_cast<unsigned char>(source[currentPos]);
+        UTF8Scanner::UTF8Scanner(std::shared_ptr<DiagnosticEngine> diagEngine)
+            : BaseScanner(std::move(diagEngine)), unicodeScanner(nullptr) {}
 
-            // 确定UTF-8序列的长度
-            int sequenceLength = 0;
-            if ((first & 0xE0) == 0xC0)
-                sequenceLength = 2;
-            else if ((first & 0xF0) == 0xE0)
-                sequenceLength = 3;
-            else if ((first & 0xF8) == 0xF0)
-                sequenceLength = 4;
-            else {
-                // 无效的UTF-8起始字节
-                return "";
-            }
-
-            // 检查是否有足够的字节
-            if (currentPos + sequenceLength > sourceLength) {
-                return "";
-            }
-
-            // 验证后续字节
-            for (int i = 1; i < sequenceLength; i++) {
-                if (!isValidUTF8Continuation(source[currentPos + i])) {
-                    return "";
-                }
-            }
-
-            // 复制整个UTF-8序列
-            result.assign(source + currentPos, sequenceLength);
-            currentPos += sequenceLength;
-            currentColumn++;  // UTF-8字符计为一列
-
-            return result;
+        void UTF8Scanner::setSource(const char* src, size_t length, const std::string& filename) {
+            BaseScanner::setSource(src, length, filename);
+            initUnicodeScanner();
         }
 
-        void UTF8Scanner::reportInvalidUTF8() {
-            diagnostics->report(
-                DiagnosticLevel::Error,
-                {filename, static_cast<unsigned int>(currentLine), static_cast<unsigned int>(currentColumn)},
-                "Invalid UTF-8 sequence in identifier");
+        void UTF8Scanner::initUnicodeScanner() {
+            if (source && sourceLength > 0) {
+                try {
+                    unicodeScanner = std::make_unique<unicode::UTF8Scanner>(std::string(source, sourceLength));
+                } catch (const std::exception&) {
+                    unicodeScanner.reset();
+                }
+            } else {
+                unicodeScanner.reset();
+            }
+        }
+
+        std::string UTF8Scanner::scanUTF8Sequence() {
+            if (!unicodeScanner || !source || currentPos >= sourceLength) {
+                return "";
+            }
+
+            try {
+                unicodeScanner->setPosition(currentPos);
+                std::string result = unicodeScanner->scanUTF8Sequence();
+
+                if (!result.empty()) {
+                    size_t bytesConsumed = result.length();
+                    if (currentPos + bytesConsumed <= sourceLength) {
+                        currentPos += bytesConsumed;
+
+                        // 计算Unicode字符宽度
+                        uint32_t codepoint;
+                        std::string_view sv(result);
+                        size_t dummy;
+                        codepoint = unicode::UnicodeEncoding::utf8ToCodePoint(sv, dummy);
+                        currentColumn += unicode::UnicodeProcessing::getCharWidth(codepoint);
+                    }
+                }
+
+                return result;
+            } catch (const std::exception&) {
+                return "";
+            }
+        }
+
+        bool UTF8Scanner::isValidUTF8Continuation(char c) const {
+            return unicode::UnicodeCore::isUtf8ContinuationByte(static_cast<unsigned char>(c));
+        }
+
+        bool UTF8Scanner::isValidUTF8FirstByte(char c) const {
+            return unicode::UnicodeCore::isValidUtf8FirstByte(static_cast<unsigned char>(c));
+        }
+
+        size_t UTF8Scanner::getUTF8SequenceLength(char firstByte) const {
+            return unicode::UnicodeCore::getUtf8SequenceLength(static_cast<unsigned char>(firstByte));
+        }
+
+        bool UTF8Scanner::isUTF8Char() const {
+            if (!source || currentPos >= sourceLength) {
+                return false;
+            }
+
+            try {
+                size_t bytesConsumed;
+                return unicode::UnicodeProcessing::validateUtf8Sequence(
+                    std::string(source + currentPos, sourceLength - currentPos), 0, bytesConsumed);
+            } catch (const std::exception&) {
+                return false;
+            }
+        }
+
+        std::optional<uint32_t> UTF8Scanner::tryPeekCodepoint() const {
+            if (!unicodeScanner || !source || currentPos >= sourceLength) {
+                return std::nullopt;
+            }
+
+            try {
+                unicodeScanner->setPosition(currentPos);
+                uint32_t codepoint;
+                if (unicodeScanner->tryPeekCodepoint(codepoint)) {
+                    return codepoint;
+                }
+            } catch (const std::exception&) {
+                // 捕获任何可能的异常并返回nullopt
+            }
+            return std::nullopt;
+        }
+
+        size_t UTF8Scanner::lookAheadUTF8(size_t n) const {
+            if (!unicodeScanner || !source || currentPos >= sourceLength) {
+                return currentPos;
+            }
+
+            try {
+                unicodeScanner->setPosition(currentPos);
+                return unicodeScanner->lookAhead(n);
+            } catch (const std::exception&) {
+                return currentPos;
+            }
+        }
+
+        void UTF8Scanner::reportInvalidUTF8(const std::string& detail) {
+            std::string message = "Invalid UTF-8 sequence";
+            if (!detail.empty()) {
+                message += ": " + detail;
+            }
+
+            SourceLocation loc{filename, static_cast<unsigned>(currentLine), static_cast<unsigned>(currentColumn)};
+            diagnostics->report(DiagnosticLevel::Error, loc, message);
         }
 
         void UTF8Scanner::skipInvalidUTF8() {
-            // 跳过无效的UTF-8序列，直到找到有效的UTF-8起始字节或ASCII字符
-            while (currentPos < sourceLength) {
-                unsigned char c = static_cast<unsigned char>(source[currentPos]);
-                if (c < 128 || (c & 0xC0) != 0x80) {
-                    break;
+            if (!unicodeScanner || !source || currentPos >= sourceLength) {
+                if (currentPos < sourceLength) {
+                    currentPos++;
+                    currentColumn++;
                 }
+                return;
+            }
+
+            try {
+                unicodeScanner->setPosition(currentPos);
+                unicodeScanner->skipInvalidUTF8();
+
+                // 更新位置
+                size_t newPos = unicodeScanner->position();
+                if (newPos > currentPos && newPos <= sourceLength) {
+                    currentColumn += (newPos - currentPos);
+                    currentPos = newPos;
+                } else {
+                    // 如果新位置无效，只前进一个字符
+                    currentPos++;
+                    currentColumn++;
+                }
+            } catch (const std::exception&) {
+                // 发生异常时，只前进一个字符
                 currentPos++;
                 currentColumn++;
             }
         }
 
         uint32_t UTF8Scanner::decodeUTF8Sequence(char first) {
-            unsigned char uc = static_cast<unsigned char>(first);
-            uint32_t codepoint = 0;
-
-            // 根据UTF-8编码规则解码
-            if ((uc & 0x80) == 0) {
-                return uc;
-            } else if ((uc & 0xE0) == 0xC0) {
-                if (currentPos + 1 >= sourceLength) return 0;
-                codepoint = ((uc & 0x1F) << 6) | (static_cast<unsigned char>(source[currentPos + 1]) & 0x3F);
-            } else if ((uc & 0xF0) == 0xE0) {
-                if (currentPos + 2 >= sourceLength) return 0;
-                codepoint = ((uc & 0x0F) << 12) | ((static_cast<unsigned char>(source[currentPos + 1]) & 0x3F) << 6) |
-                            (static_cast<unsigned char>(source[currentPos + 2]) & 0x3F);
-            } else if ((uc & 0xF8) == 0xF0) {
-                if (currentPos + 3 >= sourceLength) return 0;
-                codepoint = ((uc & 0x07) << 18) | ((static_cast<unsigned char>(source[currentPos + 1]) & 0x3F) << 12) |
-                            ((static_cast<unsigned char>(source[currentPos + 2]) & 0x3F) << 6) |
-                            (static_cast<unsigned char>(source[currentPos + 3]) & 0x3F);
+            if (!unicodeScanner || !source || currentPos >= sourceLength) {
+                return 0;
             }
 
-            return codepoint;
+            try {
+                unicodeScanner->setPosition(currentPos);
+                uint32_t codepoint = unicodeScanner->decodeUTF8Sequence(first);
+
+                if (codepoint != 0) {
+                    size_t bytesConsumed = getUTF8SequenceLength(first);
+                    if (currentPos + bytesConsumed <= sourceLength) {
+                        currentPos += bytesConsumed;
+                        currentColumn += unicode::UnicodeProcessing::getCharWidth(codepoint);
+                    }
+                }
+
+                return codepoint;
+            } catch (const std::exception&) {
+                return 0;
+            }
+        }
+
+        std::pair<uint32_t, size_t> UTF8Scanner::getNextCodepoint() {
+            if (!source || currentPos >= sourceLength) {
+                return {0, 0};
+            }
+
+            try {
+                size_t bytesConsumed;
+                std::string_view sv(source + currentPos, sourceLength - currentPos);
+                uint32_t codepoint = unicode::UnicodeEncoding::utf8ToCodePoint(sv, bytesConsumed);
+
+                if (codepoint != 0 && bytesConsumed > 0 && currentPos + bytesConsumed <= sourceLength) {
+                    return {codepoint, bytesConsumed};
+                }
+            } catch (const std::exception&) {
+                // 捕获任何可能的异常
+            }
+            return {0, 0};
+        }
+
+        std::string UTF8Scanner::collectUTF8Until(uint32_t targetCodepoint) {
+            if (!unicodeScanner || !source || currentPos >= sourceLength) {
+                return "";
+            }
+
+            try {
+                unicodeScanner->setPosition(currentPos);
+                std::string result = unicodeScanner->collectUntil(targetCodepoint);
+
+                if (!result.empty() && currentPos + result.length() <= sourceLength) {
+                    // 更新位置，考虑每个Unicode字符的宽度
+                    std::string_view sv(result);
+                    size_t pos = 0;
+                    while (pos < result.length()) {
+                        size_t bytesConsumed;
+                        uint32_t cp = unicode::UnicodeEncoding::utf8ToCodePoint(sv.substr(pos), bytesConsumed);
+                        currentColumn += unicode::UnicodeProcessing::getCharWidth(cp);
+                        pos += bytesConsumed;
+                    }
+                    currentPos += result.length();
+                }
+
+                return result;
+            } catch (const std::exception&) {
+                return "";
+            }
+        }
+
+        bool UTF8Scanner::skipUTF8Until(uint32_t targetCodepoint) {
+            if (!unicodeScanner || !source || currentPos >= sourceLength) {
+                return false;
+            }
+
+            try {
+                unicodeScanner->setPosition(currentPos);
+                bool result = unicodeScanner->skipUntil(targetCodepoint);
+
+                if (result) {
+                    size_t newPos = unicodeScanner->position();
+                    if (newPos > currentPos && newPos <= sourceLength) {
+                        // 重新计算列位置
+                        while (currentPos < newPos) {
+                            size_t bytesConsumed;
+                            std::string_view sv(source + currentPos, newPos - currentPos);
+                            uint32_t cp = unicode::UnicodeEncoding::utf8ToCodePoint(sv, bytesConsumed);
+                            currentColumn += unicode::UnicodeProcessing::getCharWidth(cp);
+                            currentPos += bytesConsumed;
+                        }
+                    }
+                }
+
+                return result;
+            } catch (const std::exception&) {
+                return false;
+            }
         }
 
     }  // namespace frontend
