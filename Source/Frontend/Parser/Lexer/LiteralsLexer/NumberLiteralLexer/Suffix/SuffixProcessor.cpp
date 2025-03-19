@@ -172,11 +172,24 @@ namespace rp {
 
             // 根据数字类型检查后缀的合法性
             if (value.kind == NumberKind::FloatingPoint) {
-                if (value.isUnsigned || value.isLong || value.isLongLong) {
-                    error = "Invalid integer suffix on floating point literal";
+                // 浮点数允许使用 f 和 l 后缀
+                if (value.isUnsigned) {
+                    error = "Invalid unsigned suffix on floating point literal";
+                    return false;
+                }
+                // 允许使用 l 后缀表示 long double
+                if (value.isLongLong) {
+                    error = "Invalid long long suffix on floating point literal";
+                    return false;
+                }
+            } else if (value.kind == NumberKind::Hexadecimal && value.isFloat) {
+                // 允许十六进制浮点数使用 f 后缀
+                if (value.isUnsigned || value.isLongLong) {
+                    error = "Invalid suffix combination for hexadecimal float literal";
                     return false;
                 }
             } else {
+                // 整数字面量
                 if (value.isFloat || value.isDouble) {
                     error = "Invalid floating point suffix on integer literal";
                     return false;

@@ -54,6 +54,44 @@ namespace rp {
                     return false;
                 }
                 hasDigits = true;  // 如果小数部分有效，整个数字就是有效的
+
+                // 处理指数部分
+                if (pos < input.length()) {
+                    char expChar = input[pos];
+                    if ((!isHexFloat && (expChar == 'e' || expChar == 'E')) ||
+                        (isHexFloat && (expChar == 'p' || expChar == 'P'))) {
+                        if (lastWasSeparator) {
+                            error = "Number separator cannot appear before exponent";
+                            return false;
+                        }
+
+                        if (!processExponentPart(
+                                input, pos, numStr, lastWasSeparator, hasDigitsAfterSeparator, error)) {
+                            return false;
+                        }
+                    }
+                }
+
+                // 处理后缀
+                if (!SuffixProcessor::processSuffix(input, pos, value, error)) {
+                    return false;
+                }
+
+                value.kind = NumberKind::FloatingPoint;
+                try {
+                    double result;
+                    std::istringstream iss(numStr);
+                    iss >> std::setprecision(std::numeric_limits<double>::max_digits10) >> result;
+
+                    if (!validateFloatRange(result, value.isFloat, error)) {
+                        return false;
+                    }
+                    value.value = result;
+                    return true;
+                } catch (const std::exception &e) {
+                    error = "Invalid floating point literal format";
+                    return false;
+                }
             } else {
                 if (!processIntegerPart(
                         input, pos, numStr, hasDigits, lastWasSeparator, hasDigitsAfterSeparator, error)) {
@@ -281,8 +319,10 @@ namespace rp {
                 pos++;
             }
 
-            if (!hasDecimalDigits) {
-                error = "Expected digits after decimal point";
+            // 允许小数点后没有数字的情况（如"42."）
+            // 只要整数部分有数字就可以
+            if (!hasDecimalDigits && numStr.length() <= 1) {
+                error = "Expected digits before or after decimal point";
                 return false;
             }
 

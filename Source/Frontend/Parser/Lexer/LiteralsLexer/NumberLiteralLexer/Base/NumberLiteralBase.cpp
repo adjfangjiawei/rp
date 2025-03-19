@@ -15,7 +15,7 @@ namespace rp {
 
         bool NumberLiteralBase::isOctalDigit(uint32_t codepoint) { return codepoint >= '0' && codepoint <= '7'; }
 
-        bool NumberLiteralBase::isNumberSeparator(uint32_t codepoint) { return codepoint == '_'; }
+        bool NumberLiteralBase::isNumberSeparator(uint32_t codepoint) { return codepoint == '\''; }
 
         int NumberLiteralBase::digitValue(uint32_t codepoint) {
             if (codepoint >= '0' && codepoint <= '9') {
