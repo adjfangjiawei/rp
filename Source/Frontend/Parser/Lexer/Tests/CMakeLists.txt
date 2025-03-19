@@ -23,6 +23,7 @@ target_link_libraries(LexerTests
     LexerTrace
     LexerUtils
     Diagnostic
+    LexerUnicode
     GTest::gtest
     GTest::gtest_main
 )
@@ -46,6 +47,7 @@ target_link_libraries(LexerBenchmarks
     LexerTrace
     LexerUtils
     Diagnostic
+    LexerUnicode
     benchmark::benchmark
     benchmark::benchmark_main
 )
@@ -69,6 +71,7 @@ target_link_libraries(LexerCoverage
     Diagnostic
     GTest::gtest
     GTest::gtest_main
+    LexerUnicode
 )
 
 # Set include directories for all test targets

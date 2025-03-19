@@ -65,8 +65,9 @@ namespace rp {
                 // 写入文本内容
                 size_t textLength = token.text.length();
                 writeBinary(buffer, &textLength, sizeof(textLength));
-                std::string text_str{token.text};
-                writeBinary(buffer, text_str.data(), textLength);
+                if (textLength > 0) {
+                    writeBinary(buffer, token.text.data(), textLength);
+                }
 
                 // 写入位置信息
                 writeBinary(buffer, &token.line, sizeof(token.line));

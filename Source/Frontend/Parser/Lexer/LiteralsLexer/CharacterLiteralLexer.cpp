@@ -1,10 +1,10 @@
+
 #include "Frontend/Parser/Lexer/LiteralsLexer/CharacterLiteralLexer.h"
 
 #include <cctype>
 #include <sstream>
 
-#include "Frontend/Parser/Lexer/Utils/Unicode.h"
-#include "Frontend/Parser/Lexer/Utils/UnicodeEscape.h"
+#include "Frontend/Parser/Lexer/Unicode/Unicode.h"
 
 namespace rp {
     namespace frontend {
@@ -51,8 +51,8 @@ namespace rp {
                     return false;
                 }
 
-                std::string_view remaining(input.data() + pos - 1, input.length() - (pos - 1));
-                auto result = UnicodeEscape::parseEscapeSequence(remaining);
+                std::string remaining(input.data() + pos - 1, input.length() - (pos - 1));
+                auto result = unicode::UnicodeEscape::parseEscapeSequence(remaining, 0);
 
                 if (!result.success) {
                     error = result.error;
@@ -60,18 +60,18 @@ namespace rp {
                     return false;
                 }
 
-                // 确保转义序列只产生一个字符
-                if (result.value.length() != 1) {
-                    error = "Character literal can only contain one character";
+                // 确保码点值在单个字符的范围内
+                if (result.codepoint > 0xFF) {
+                    error = "Character literal value too large";
                     pos = startPos;
                     return false;
                 }
 
-                value = static_cast<unsigned char>(result.value[0]);
+                value = static_cast<unsigned char>(result.codepoint);
                 pos += result.consumed - 1;  // -1是因为我们已经跳过了反斜杠
             } else {
                 // 处理普通字符或UTF-8字符
-                auto charResult = Unicode::processCharacter(input, pos);
+                auto charResult = unicode::UnicodeProcessing::processCharacter(input, pos);
                 if (!charResult.success) {
                     error = charResult.error;
                     pos = startPos;
@@ -123,11 +123,11 @@ namespace rp {
 
             if (content[0] == '\\') {
                 // 验证转义序列
-                return UnicodeEscape::validateEscapeSequence(content, error);
+                return unicode::UnicodeEscape::validateEscapeSequence(content, error);
             } else {
                 // 验证UTF-8字符
                 size_t bytesConsumed;
-                if (!Unicode::validateUtf8Sequence(content, 0, bytesConsumed)) {
+                if (!unicode::UnicodeProcessing::validateUtf8Sequence(content, 0, bytesConsumed)) {
                     error = "Invalid UTF-8 sequence";
                     return false;
                 }

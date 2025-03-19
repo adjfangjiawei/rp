@@ -1,10 +1,10 @@
+
 #include "Frontend/Parser/Lexer/LiteralsLexer/StringLiteralLexer.h"
 
 #include <cctype>
 #include <sstream>
 
-#include "Frontend/Parser/Lexer/Utils/Unicode.h"
-#include "Frontend/Parser/Lexer/Utils/UnicodeEscape.h"
+#include "Frontend/Parser/Lexer/Unicode/Unicode.h"
 
 namespace rp {
     namespace frontend {
@@ -58,27 +58,30 @@ namespace rp {
 
                     if (isMultiline) {
                         // 处理行连续
-                        auto lineContResult = UnicodeEscape::processLineContinuation(remaining);
+                        auto lineContResult = unicode::UnicodeEscape::processLineContinuation(std::string(remaining));
                         if (lineContResult.success) {
                             pos += lineContResult.consumed;
                             continue;
                         }
                     }
 
-                    auto result = UnicodeEscape::parseEscapeSequence(remaining);
+                    auto result = unicode::UnicodeEscape::parseEscapeSequence(std::string(remaining), 0);
                     if (!result.success) {
                         error = result.error;
                         return false;
                     }
 
-                    output += result.value;
+                    // 将码点转换为UTF-8字符串
+                    output += unicode::UnicodeProcessing::processUtf8String(
+                                  std::string(1, static_cast<char>(result.codepoint)), 0, 1)
+                                  .value;
                     pos += result.consumed;
                 } else if (!isMultiline && (c == '\n' || c == '\r')) {
                     error = "Unterminated string literal";
                     return false;
                 } else {
                     // 处理普通字符或UTF-8序列
-                    auto charResult = Unicode::processUtf8Character(input, pos);
+                    auto charResult = unicode::UnicodeProcessing::processUtf8Character(input, pos);
                     if (!charResult.success) {
                         error = charResult.error;
                         return false;
@@ -141,7 +144,7 @@ namespace rp {
 
             // 提取原始字符串内容
             size_t contentLength = contentEnd - contentStart;
-            auto result = Unicode::processUtf8String(input, contentStart, contentLength);
+            auto result = unicode::UnicodeProcessing::processUtf8String(input, contentStart, contentLength);
 
             if (!result.success) {
                 error = result.error;
@@ -160,18 +163,13 @@ namespace rp {
 
             // 对于原始字符串字面量，只需要验证UTF-8编码
             if (str.length() >= 2 && str[0] == 'R' && str[1] == '"') {
-                return Unicode::validateUtf8String(str, error);
+                return unicode::UnicodeProcessing::validateUtf8String(str, error);
             }
 
             // 对于普通字符串字面量，需要验证转义序列
-            auto result = UnicodeEscape::unescapeString(str);
-            if (!result.success) {
-                error = result.error;
-                return false;
-            }
-
-            // 验证解析后的字符串是否是有效的UTF-8
-            return Unicode::validateUtf8String(result.value, error);
+            // 验证字符串是否是有效的UTF-8，并且所有转义序列都是合法的
+            return unicode::UnicodeProcessing::validateUtf8String(str, error) &&
+                   unicode::UnicodeEscape::validateEscapeSequence(str, error);
         }
 
     }  // namespace frontend

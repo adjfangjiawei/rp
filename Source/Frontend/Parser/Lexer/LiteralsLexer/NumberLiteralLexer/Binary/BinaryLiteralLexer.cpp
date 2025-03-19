@@ -20,9 +20,6 @@ namespace rp {
             size_t digitCount = 0;
             std::stringstream binaryStr;
 
-            // 记录起始位置用于错误报告
-            const size_t startPos = pos;
-
             while (pos < input.length()) {
                 char c = input[pos];
 

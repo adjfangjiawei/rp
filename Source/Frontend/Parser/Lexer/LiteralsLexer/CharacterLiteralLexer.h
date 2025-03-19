@@ -1,10 +1,12 @@
+
 #pragma once
 #include <memory>
 #include <string>
 
 #include "Frontend/Parser/Lexer/MainLexer/Lexer.h"
 #include "Frontend/Parser/Lexer/Token/Token.h"
-#include "Frontend/Parser/Lexer/Utils/UnicodeEscape.h"
+#include "Frontend/Parser/Lexer/Unicode/Core/UnicodeCore.h"
+#include "Frontend/Parser/Lexer/Unicode/Escape/UnicodeEscape.h"
 
 namespace rp {
     namespace frontend {

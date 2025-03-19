@@ -3,6 +3,7 @@ add_subdirectory(LiteralsLexer)
 add_subdirectory(MainLexer)
 add_subdirectory(TokenLexer)
 add_subdirectory(Token)
+add_subdirectory(Unicode)
 add_subdirectory(Trace)
 add_subdirectory(Utils)
 add_subdirectory(Tests)
@@ -27,6 +28,7 @@ target_link_libraries(Lexer
     LexerTrace
     LexerUtils
     Diagnostic
+    LexerUnicode
 )
 
 target_link_libraries(frontend INTERFACE Lexer)

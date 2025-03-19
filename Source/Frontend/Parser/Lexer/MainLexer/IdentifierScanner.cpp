@@ -2,7 +2,8 @@
 #include "IdentifierScanner.h"
 
 #include "Frontend/Parser/Lexer/MainLexer/KeywordManager.h"
-#include "Frontend/Parser/Lexer/Utils/Unicode.h"
+#include "Frontend/Parser/Lexer/Unicode/Categories/UnicodeCategories.h"
+#include "Frontend/Parser/Lexer/Unicode/Core/UnicodeCore.h"
 
 namespace rp {
     namespace frontend {
@@ -69,14 +70,14 @@ namespace rp {
             if (static_cast<unsigned char>(c) < 128) {
                 return isalpha(c) || c == '_';
             }
-            return Unicode::isIdentifierStart(c);
+            return unicode::UnicodeCategories::isIdentifierStart(c);
         }
 
         bool IdentifierScanner::isIdentifierPart(char c) const {
             if (static_cast<unsigned char>(c) < 128) {
                 return isalnum(c) || c == '_';
             }
-            return Unicode::isIdentifierContinue(c);
+            return unicode::UnicodeCategories::isIdentifierContinue(c);
         }
 
         std::string IdentifierScanner::scanUTF8Identifier() { return scanUTF8Sequence(); }
