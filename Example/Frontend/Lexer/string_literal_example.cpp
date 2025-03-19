@@ -47,6 +47,8 @@ int main() {
             // 打印token的具体位置的上下文
             std::string context = lexer.getErrorContext(token.getLine(), token.getColumn());
             std::cout << "Context:\n" << context << "\n\n";
+        } else if (token.getKind() == TokenKind::Invalid) {
+            std::cout << "Error: " << token.getErrorMessage() << std::endl;
         }
     }
 

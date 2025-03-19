@@ -2,9 +2,9 @@
 #ifndef STRINGLITERALUTILS_H
 #define STRINGLITERALUTILS_H
 
+#include <cstdint>
 #include <string>
 #include <tuple>
-
 namespace rp {
     namespace frontend {
 
@@ -35,6 +35,9 @@ namespace rp {
             static size_t getUTF8ByteCount(unsigned char c);
             static bool isValidUTF8ContinuationByte(unsigned char c);
             static std::tuple<bool, size_t> validateUTF8Sequence(const std::string& str, size_t pos);
+
+            // 获取UTF-8字符及其长度
+            static std::tuple<uint32_t, size_t> getUTF8Char(const std::string& str, size_t pos);
 
             // 字符串前缀相关功能
             static std::tuple<StringPrefix, size_t> parseStringPrefix(const std::string& input) {
@@ -91,6 +94,21 @@ namespace rp {
 
             static bool hasValidQuotes(const std::string& str) {
                 return str.length() >= 2 && str.front() == '"' && str.back() == '"';
+            }
+
+            static bool isEscaped(const std::string& str, size_t pos) {
+                if (pos == 0) return false;
+
+                // 计算前面连续的反斜杠数量
+                size_t backslashCount = 0;
+                size_t i = pos - 1;
+                while (i < str.length() && i >= 0 && str[i] == '\\') {
+                    backslashCount++;
+                    if (i == 0) break;
+                    i--;
+                }
+                // 如果反斜杠数量为奇数，则字符被转义
+                return backslashCount % 2 == 1;
             }
 
             static bool isUnescapedQuote(const std::string& str, size_t pos) {

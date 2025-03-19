@@ -45,8 +45,6 @@ namespace rp {
                 return false;
             }
 
-            // 保存初始位置以便检查长度
-            size_t contentStartPos = pos;
             bool isEscapeSequence = false;
 
             // 处理字符内容

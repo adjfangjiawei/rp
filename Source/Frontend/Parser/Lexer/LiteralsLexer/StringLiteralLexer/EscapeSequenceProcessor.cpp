@@ -12,7 +12,7 @@ namespace rp {
                                                                    std::string& error) {
             // 确保当前位置是反斜杠
             if (currentPos >= source.length() || source[currentPos] != '\\') {
-                error = "Expected escape sequence starting with '\\'";
+                error = "预期的转义序列应以'\\'开始";
                 return "";
             }
 
@@ -20,8 +20,7 @@ namespace rp {
             currentPos++;  // 跳过反斜杠
 
             if (currentPos >= source.length()) {
-                // 如果反斜杠后面是字符串结束，可能是续行
-                error = "Incomplete escape sequence";
+                error = "不完整的转义序列";
                 return "";
             }
 
@@ -31,6 +30,17 @@ namespace rp {
             // 处理续行
             if (c == '\n') {
                 return "";  // 返回空字符串，表示这是一个有效的续行
+            }
+
+            // 检查是否是UTF-8字符
+            unsigned char uc = static_cast<unsigned char>(c);
+            if (uc >= 0x80) {
+                currentPos--;  // 回退，因为这可能是一个UTF-8字符
+                auto [codepoint, length] = StringLiteralUtils::getUTF8Char(source, currentPos);
+                if (length > 0) {
+                    currentPos += length;
+                    return source.substr(currentPos - length, length);
+                }
             }
 
             switch (c) {
@@ -87,12 +97,30 @@ namespace rp {
                     result = processOctalEscape(source, currentPos, error);
                     break;
                 default:
-                    error = "Invalid escape sequence: \\" + std::string(1, c);
+                    error = "无效的转义序列 '\\" + std::string(1, c) +
+                            "'\n"
+                            "有效的转义序列包括:\n"
+                            "  \\n - 换行\n"
+                            "  \\t - 制表符\n"
+                            "  \\r - 回车\n"
+                            "  \\b - 退格\n"
+                            "  \\f - 换页\n"
+                            "  \\v - 垂直制表符\n"
+                            "  \\a - 响铃\n"
+                            "  \\\\ - 反斜杠\n"
+                            "  \\' - 单引号\n"
+                            "  \\\" - 双引号\n"
+                            "  \\? - 问号\n"
+                            "  \\xHH - 十六进制转义 (HH 为两位十六进制数)\n"
+                            "  \\uHHHH - Unicode转义 (HHHH 为四位十六进制数)\n"
+                            "  \\UHHHHHHHH - Unicode转义 (HHHHHHHH 为八位十六进制数)\n"
+                            "  \\0-\\377 - 八进制转义";
+                    currentPos = originalPos + 2;  // 移动到转义序列之后
                     return "";
             }
 
             if (error.empty() && result.empty()) {
-                error = "Invalid escape sequence processing";
+                error = "转义序列处理失败";
             }
 
             return result;
@@ -108,7 +136,7 @@ namespace rp {
                                                               size_t& currentPos,
                                                               std::string& error) {
             if (currentPos + 2 > source.length()) {
-                error = "Incomplete hex escape sequence: expected 2 hex digits";
+                error = "不完整的十六进制转义序列：需要2位十六进制数";
                 return "";
             }
 
@@ -116,7 +144,7 @@ namespace rp {
             for (int i = 0; i < 2; ++i) {
                 char c = source[currentPos + i];
                 if (!StringLiteralUtils::isHexDigit(c)) {
-                    error = "Invalid hex escape sequence: expected hex digit, got '" + std::string(1, c) + "'";
+                    error = "无效的十六进制转义序列：预期十六进制数字，得到 '" + std::string(1, c) + "'";
                     return "";
                 }
                 hexStr += c;
@@ -132,7 +160,7 @@ namespace rp {
                                                                 size_t& currentPos,
                                                                 std::string& error) {
             if (!StringLiteralUtils::isOctalDigit(source[currentPos])) {
-                error = "Invalid octal escape sequence: expected octal digit";
+                error = "无效的八进制转义序列：预期八进制数字";
                 return "";
             }
 
@@ -161,7 +189,7 @@ namespace rp {
             }
 
             if (octalStr.empty()) {
-                error = "Invalid octal escape sequence";
+                error = "无效的八进制转义序列";
                 return "";
             }
 
@@ -173,7 +201,7 @@ namespace rp {
                                                                   std::string& error) {
             // 检查是否是 \u 或 \U
             if (currentPos >= source.length()) {
-                error = "Incomplete Unicode escape sequence";
+                error = "不完整的Unicode转义序列";
                 return "";
             }
 
@@ -182,8 +210,7 @@ namespace rp {
 
             // 检查是否有足够的字符
             if (currentPos + requiredDigits > source.length()) {
-                error =
-                    "Incomplete Unicode escape sequence: expected " + std::to_string(requiredDigits) + " hex digits";
+                error = "不完整的Unicode转义序列：需要 " + std::to_string(requiredDigits) + " 位十六进制数";
                 return "";
             }
 
@@ -191,7 +218,7 @@ namespace rp {
             for (size_t i = 0; i < requiredDigits; ++i) {
                 char c = source[currentPos + i];
                 if (!StringLiteralUtils::isHexDigit(c)) {
-                    error = "Invalid Unicode escape sequence: invalid hex digit '" + std::string(1, c) + "'";
+                    error = "无效的Unicode转义序列：无效的十六进制数字 '" + std::string(1, c) + "'";
                     return "";
                 }
                 hexStr += c;
@@ -202,19 +229,19 @@ namespace rp {
             try {
                 codepoint = std::stoul(hexStr, nullptr, 16);
             } catch (const std::exception&) {
-                error = "Invalid Unicode escape sequence: invalid hex value";
+                error = "无效的Unicode转义序列：无效的十六进制值";
                 return "";
             }
 
             // 验证Unicode码点的有效范围
             if (codepoint > 0x10FFFF) {
-                error = "Unicode code point out of range (maximum value is 0x10FFFF)";
+                error = "Unicode码点超出范围（最大值为0x10FFFF）";
                 return "";
             }
 
             // 检查代理对范围
             if (codepoint >= 0xD800 && codepoint <= 0xDFFF) {
-                error = "Invalid Unicode code point: surrogate pair values (0xD800-0xDFFF) are not allowed";
+                error = "无效的Unicode码点：不允许使用代理对值（0xD800-0xDFFF）";
                 return "";
             }
 

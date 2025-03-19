@@ -34,6 +34,10 @@ namespace rp {
             return (c & 0xC0) == 0x80;  // 这个简单的检查可以保留，因为它是一个基本的位操作
         }
 
+        std::tuple<uint32_t, size_t> StringLiteralUtils::getUTF8Char(const std::string& str, size_t pos) {
+            return rp::frontend::unicode::UnicodeEncoding::getMultiByteChar(str, pos);
+        }
+
         std::tuple<bool, size_t> StringLiteralUtils::validateUTF8Sequence(const std::string& str, size_t pos) {
             if (pos >= str.length()) {
                 return {false, 0};

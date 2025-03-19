@@ -1,6 +1,7 @@
 #include "RawStringProcessor.h"
 
 #include "Frontend/Diagnostic/Diagnostic.h"
+#include "Frontend/Parser/Lexer/LiteralsLexer/StringLiteralLexer/StringLiteralUtils.h"
 #include "Frontend/Parser/Lexer/Unicode/Encoding/UnicodeEncoding.h"
 namespace rp {
     namespace frontend {
@@ -30,13 +31,9 @@ namespace rp {
             // 查找分隔符和开始的括号
             std::string delimiter;
             bool foundOpenParen = false;
-            size_t lineCount = 0;
-            const size_t MAX_LINES = 1000;  // 限制最大行数
+            const size_t MAX_DELIMITER_LENGTH = 16;
 
             // 收集分隔符（允许空分隔符）
-            size_t maxDelimiterLength = 16;
-            bool foundDelimiter = false;
-
             while (currentPos < source.length()) {
                 char c = source[currentPos];
 
@@ -57,11 +54,10 @@ namespace rp {
 
                 delimiter += c;
                 currentPos++;
-                foundDelimiter = true;
 
-                if (delimiter.length() > maxDelimiterLength) {
+                if (delimiter.length() > MAX_DELIMITER_LENGTH) {
                     Token token(TokenKind::Invalid);
-                    token.setError("原始字符串分隔符过长（最大长度为" + std::to_string(maxDelimiterLength) + "）",
+                    token.setError("原始字符串分隔符过长（最大长度为" + std::to_string(MAX_DELIMITER_LENGTH) + "）",
                                    static_cast<unsigned int>(startLoc.line),
                                    static_cast<unsigned int>(startLoc.column));
                     return token;
@@ -80,34 +76,16 @@ namespace rp {
             std::string content;
             bool foundClosingSequence = false;
             std::string closingSequence = ")" + delimiter + "\"";
-            size_t contentStartLine = startLoc.line;
-            size_t contentStartColumn = startLoc.column;
+            size_t lineCount = 0;
+            const size_t MAX_LINES = 1000;  // 限制最大行数
 
             while (currentPos < source.length()) {
-                char c = source[currentPos];
-
-                // 处理换行
-                if (c == '\n') {
-                    lineCount++;
-                    if (lineCount > MAX_LINES) {
-                        Token token(TokenKind::Invalid);
-                        token.setError("原始字符串超过最大行数限制（" + std::to_string(MAX_LINES) + "行）",
-                                       static_cast<unsigned int>(contentStartLine),
-                                       static_cast<unsigned int>(contentStartColumn));
-                        return token;
-                    }
-                    content += c;
-                    currentPos++;
-                    continue;
-                }
-
                 // 检查结束序列
-                if (c == ')') {
+                if (source[currentPos] == ')') {
                     size_t tempPos = currentPos;
                     bool isClosing = true;
                     size_t remainingLength = source.length() - tempPos;
 
-                    // 确保有足够的字符来匹配结束序列
                     if (remainingLength >= closingSequence.length()) {
                         // 尝试匹配完整的结束序列
                         for (size_t i = 0; i < closingSequence.length(); ++i) {
@@ -123,7 +101,6 @@ namespace rp {
                             if (afterClosing < source.length()) {
                                 char nextChar = source[afterClosing];
                                 if (isValidDelimiter(std::string(1, nextChar))) {
-                                    // 如果结束序列后紧跟着一个有效的分隔符字符，这可能不是真正的结束
                                     isClosing = false;
                                 }
                             }
@@ -135,35 +112,50 @@ namespace rp {
                             }
                         }
                     }
-
-                    // 如果不是结束序列，继续收集内容
-                    content += c;
-                    currentPos++;
-                    continue;
                 }
 
-                // 处理UTF-8字符
-                unsigned char uc = static_cast<unsigned char>(c);
-                if (uc >= 0x80) {
-                    // 使用UnicodeEncoding类处理UTF-8字符
-                    size_t bytesRead;
-                    auto [codepoint, length] = unicode::UnicodeEncoding::getMultiByteChar(source, currentPos);
-
-                    if (length == 0) {
+                // 处理换行符
+                if (source[currentPos] == '\n' || source[currentPos] == '\r') {
+                    lineCount++;
+                    if (lineCount > MAX_LINES) {
                         Token token(TokenKind::Invalid);
-                        token.setError("无效的UTF-8序列",
-                                       static_cast<unsigned int>(contentStartLine),
-                                       static_cast<unsigned int>(contentStartColumn));
+                        token.setError("原始字符串超过最大行数限制（" + std::to_string(MAX_LINES) + "行）",
+                                       static_cast<unsigned int>(startLoc.line),
+                                       static_cast<unsigned int>(startLoc.column));
                         return token;
                     }
 
-                    // 添加整个UTF-8序列
+                    // 统一处理换行符
+                    if (source[currentPos] == '\r' && currentPos + 1 < source.length() &&
+                        source[currentPos + 1] == '\n') {
+                        content += '\n';  // 将 CRLF 转换为 LF
+                        currentPos += 2;
+                    } else {
+                        content += '\n';  // 将 CR 或 LF 转换为 LF
+                        currentPos++;
+                    }
+                    continue;
+                }
+
+                // 处理 UTF-8 字符
+                unsigned char currentChar = static_cast<unsigned char>(source[currentPos]);
+                if (currentChar >= 0x80) {
+                    auto [codepoint, length] = unicode::UnicodeEncoding::getMultiByteChar(source, currentPos);
+                    if (length == 0) {
+                        Token token(TokenKind::Invalid);
+                        token.setError("无效的UTF-8序列",
+                                       static_cast<unsigned int>(startLoc.line),
+                                       static_cast<unsigned int>(startLoc.column));
+                        return token;
+                    }
+
                     content.append(source.substr(currentPos, length));
                     currentPos += length;
                     continue;
                 }
 
-                content += c;
+                // 处理普通字符
+                content += source[currentPos];
                 currentPos++;
             }
 
@@ -173,6 +165,20 @@ namespace rp {
                                static_cast<unsigned int>(startLoc.line),
                                static_cast<unsigned int>(startLoc.column));
                 return token;
+            }
+
+            // 验证最终内容的 UTF-8 编码
+            size_t validatePos = 0;
+            while (validatePos < content.length()) {
+                auto [valid, bytesRead] = StringLiteralUtils::validateUTF8Sequence(content, validatePos);
+                if (!valid || bytesRead == 0) {
+                    Token token(TokenKind::Invalid);
+                    token.setError("字符串内容包含无效的UTF-8序列",
+                                   static_cast<unsigned int>(startLoc.line),
+                                   static_cast<unsigned int>(startLoc.column));
+                    return token;
+                }
+                validatePos += bytesRead;
             }
 
             Token token(TokenKind::StringLiteral);
