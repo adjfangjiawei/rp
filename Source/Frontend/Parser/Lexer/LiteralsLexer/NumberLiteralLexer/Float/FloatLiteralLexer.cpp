@@ -1,8 +1,9 @@
-
 #include "Frontend/Parser/Lexer/LiteralsLexer/NumberLiteralLexer/Float/FloatLiteralLexer.h"
 
 #include <cmath>
+#include <iomanip>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 
 #include "Frontend/Parser/Lexer/LiteralsLexer/NumberLiteralLexer/Suffix/SuffixProcessor.h"
@@ -16,8 +17,35 @@ namespace rp {
                                                        std::string &error) {
             std::string numStr;
             bool hasDigits = false;
-            bool lastWasSeparator = true;
+            bool lastWasSeparator = false;
             bool hasDigitsAfterSeparator = false;
+            bool isHexFloat = false;
+
+            // 检查是否是十六进制浮点数
+            if (pos + 2 < input.length() && input[pos] == '0' && (input[pos + 1] == 'x' || input[pos + 1] == 'X')) {
+                isHexFloat = true;
+                pos += 2;
+                numStr = "0x";
+            }
+
+            // 检查特殊值
+            if (!isHexFloat && pos + 3 < input.length()) {
+                std::string special = input.substr(pos, 3);
+                if (special == "inf" || special == "Inf") {
+                    pos += 3;
+                    if (pos + 5 <= input.length() && input.substr(pos, 5) == "inity") {
+                        pos += 5;
+                    }
+                    value.value = std::numeric_limits<double>::infinity();
+                    value.kind = NumberKind::FloatingPoint;
+                    return true;
+                } else if (special == "nan" || special == "NaN") {
+                    pos += 3;
+                    value.value = std::numeric_limits<double>::quiet_NaN();
+                    value.kind = NumberKind::FloatingPoint;
+                    return true;
+                }
+            }
 
             // 处理整数部分
             if (!processIntegerPart(input, pos, numStr, hasDigits, lastWasSeparator, hasDigitsAfterSeparator, error)) {
@@ -40,14 +68,18 @@ namespace rp {
             }
 
             // 处理指数部分
-            if (pos < input.length() && (input[pos] == 'e' || input[pos] == 'E')) {
-                if (lastWasSeparator) {
-                    error = "Number separator cannot appear before exponent";
-                    return false;
-                }
+            if (pos < input.length()) {
+                char expChar = input[pos];
+                if ((!isHexFloat && (expChar == 'e' || expChar == 'E')) ||
+                    (isHexFloat && (expChar == 'p' || expChar == 'P'))) {
+                    if (lastWasSeparator) {
+                        error = "Number separator cannot appear before exponent";
+                        return false;
+                    }
 
-                if (!processExponentPart(input, pos, numStr, lastWasSeparator, hasDigitsAfterSeparator, error)) {
-                    return false;
+                    if (!processExponentPart(input, pos, numStr, lastWasSeparator, hasDigitsAfterSeparator, error)) {
+                        return false;
+                    }
                 }
             }
 
@@ -56,6 +88,7 @@ namespace rp {
                 return false;
             }
 
+            // 处理后缀
             if (!SuffixProcessor::processSuffix(input, pos, value, error)) {
                 return false;
             }
@@ -63,11 +96,65 @@ namespace rp {
             value.kind = NumberKind::FloatingPoint;
 
             try {
-                double doubleValue = std::stod(numStr);
-                if (!validateFloatRange(doubleValue, value.isFloat, error)) {
-                    return false;
+                // 使用高精度转换
+                std::istringstream iss(numStr);
+                if (isHexFloat) {
+                    // 十六进制浮点数需要特殊处理
+                    unsigned long long intPart = 0;
+                    double fracPart = 0.0;
+                    int exponent = 0;
+
+                    // 解析十六进制字符串
+                    size_t pointPos = numStr.find('.');
+                    size_t expPos = numStr.find_first_of("pP");
+
+                    // 处理整数部分
+                    std::string intStr = (pointPos != std::string::npos) ? numStr.substr(2, pointPos - 2)
+                                         : (expPos != std::string::npos) ? numStr.substr(2, expPos - 2)
+                                                                         : numStr.substr(2);
+
+                    if (!intStr.empty()) {
+                        intPart = std::stoull(intStr, nullptr, 16);
+                    }
+
+                    // 处理小数部分
+                    if (pointPos != std::string::npos) {
+                        std::string fracStr = (expPos != std::string::npos)
+                                                  ? numStr.substr(pointPos + 1, expPos - pointPos - 1)
+                                                  : numStr.substr(pointPos + 1);
+
+                        if (!fracStr.empty()) {
+                            double scale = 1.0;
+                            for (char c : fracStr) {
+                                scale *= 16.0;
+                                fracPart += (std::isdigit(c) ? c - '0' : std::tolower(c) - 'a' + 10) / scale;
+                            }
+                        }
+                    }
+
+                    // 处理指数部分
+                    if (expPos != std::string::npos) {
+                        std::string expStr = numStr.substr(expPos + 1);
+                        exponent = std::stoi(expStr);
+                    }
+
+                    // 计算最终值
+                    double result = (intPart + fracPart) * std::pow(2.0, exponent);
+
+                    if (!validateFloatRange(result, value.isFloat, error)) {
+                        return false;
+                    }
+                    value.value = result;
+                } else {
+                    // 普通浮点数转换
+                    double result;
+                    iss >> std::setprecision(std::numeric_limits<double>::max_digits10) >> result;
+
+                    if (!validateFloatRange(result, value.isFloat, error)) {
+                        return false;
+                    }
+                    value.value = result;
                 }
-                value.value = doubleValue;
                 return true;
             } catch (const std::out_of_range &) {
                 error = "Floating point literal is out of range";
@@ -85,6 +172,8 @@ namespace rp {
                                                    bool &lastWasSeparator,
                                                    bool &hasDigitsAfterSeparator,
                                                    std::string &error) {
+            bool isHex = !numStr.empty() && numStr[0] == '0' && (numStr[1] == 'x' || numStr[1] == 'X');
+
             while (pos < input.length()) {
                 char c = input[pos];
 
@@ -103,7 +192,7 @@ namespace rp {
                     continue;
                 }
 
-                if (!isDigit(c)) {
+                if (isHex ? !isHexDigit(c) : !isDigit(c)) {
                     break;
                 }
 
@@ -127,6 +216,7 @@ namespace rp {
                                                    bool &hasDigitsAfterSeparator,
                                                    std::string &error) {
             bool hasDecimalDigits = false;
+            bool isHex = numStr.length() >= 2 && numStr[0] == '0' && (numStr[1] == 'x' || numStr[1] == 'X');
 
             while (pos < input.length()) {
                 char c = input[pos];
@@ -142,7 +232,7 @@ namespace rp {
                     continue;
                 }
 
-                if (!isDigit(c)) {
+                if (isHex ? !isHexDigit(c) : !isDigit(c)) {
                     break;
                 }
 
@@ -170,7 +260,9 @@ namespace rp {
                                                     bool &lastWasSeparator,
                                                     bool &hasDigitsAfterSeparator,
                                                     std::string &error) {
-            numStr += input[pos++];
+            char expChar = input[pos];
+            numStr += expChar;
+            pos++;
 
             // 处理指数符号
             if (pos < input.length() && (input[pos] == '+' || input[pos] == '-')) {
@@ -221,25 +313,44 @@ namespace rp {
         }
 
         bool FloatLiteralLexer::validateFloatRange(double value, bool isFloat, std::string &error) {
+            if (std::isnan(value) || std::isinf(value)) {
+                return true;  // 特殊值总是有效的
+            }
+
             if (isFloat) {
                 if (std::abs(value) > std::numeric_limits<float>::max()) {
                     error = "Float literal is too large";
                     return false;
                 }
                 if (value != 0.0 && std::abs(value) < std::numeric_limits<float>::min()) {
-                    error = "Float literal is too small";
+                    error = "Float literal is too small (underflow)";
                     return false;
                 }
             } else {
-                if (std::isinf(value)) {
+                if (std::abs(value) > std::numeric_limits<double>::max()) {
                     error = "Double literal is too large";
                     return false;
                 }
                 if (value != 0.0 && std::abs(value) < std::numeric_limits<double>::min()) {
-                    error = "Double literal is too small";
+                    error = "Double literal is too small (underflow)";
                     return false;
                 }
             }
+
+            // 检查是否是非规格化数
+            if (isFloat) {
+                float f = static_cast<float>(value);
+                if (value != 0.0 && std::abs(f) < std::numeric_limits<float>::min()) {
+                    error = "Float literal becomes denormalized";
+                    return false;
+                }
+            } else {
+                if (value != 0.0 && std::abs(value) < std::numeric_limits<double>::min()) {
+                    error = "Double literal becomes denormalized";
+                    return false;
+                }
+            }
+
             return true;
         }
 

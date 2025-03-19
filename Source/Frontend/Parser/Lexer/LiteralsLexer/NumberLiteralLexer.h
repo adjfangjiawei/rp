@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include <string>
@@ -46,6 +45,12 @@ namespace rp {
 
             // 检查是否是浮点数
             bool isFloatingPointNumber(const std::string &input, size_t pos);
+
+            // 处理类型后缀
+            bool processTypeSuffix(const std::string &input, size_t &pos, NumberValue &value, std::string &error);
+
+            // 验证值范围
+            bool validateValueRange(const NumberValue &value, std::string &error);
         };
 
     }  // namespace frontend

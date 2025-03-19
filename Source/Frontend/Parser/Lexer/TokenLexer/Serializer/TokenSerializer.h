@@ -34,7 +34,7 @@ namespace rp {
             static bool readBinary(const std::vector<uint8_t>& buffer, size_t& offset, void* data, size_t size);
 
             // 字符串编码/解码
-            static std::string encodeString(const std::string& str);
+            static std::string encodeString(std::string_view str);
             static std::string decodeString(const std::string& str);
         };
 

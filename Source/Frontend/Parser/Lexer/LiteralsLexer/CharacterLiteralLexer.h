@@ -45,12 +45,6 @@ namespace rp {
           private:
             // 处理转义序列
             static bool processEscapeSequence(const std::string &input, size_t &pos, long long &value);
-
-            // 处理Unicode字符
-            static bool processUnicodeChar(const std::string &input, size_t &pos, long long &value);
-
-            // 处理UTF-8编码
-            static bool processUtf8Encoding(unsigned int codepoint, long long &value);
         };
 
     }  // namespace frontend

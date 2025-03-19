@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include <string>
@@ -17,6 +16,7 @@ namespace rp {
 
           private:
             static bool checkBinaryOverflow(long long &result, std::string &error);
+            static bool validateValueRange(unsigned long long result, NumberValue &value, std::string &error);
         };
 
     }  // namespace frontend

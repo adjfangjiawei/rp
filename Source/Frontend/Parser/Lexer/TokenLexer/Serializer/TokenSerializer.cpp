@@ -140,8 +140,8 @@ namespace rp {
 
         std::string TokenSerializer::serializeToken(const Token& token) {
             std::stringstream ss;
-            ss << static_cast<int>(token.kind) << " " << encodeString(std::string{token.text}) << " " << token.line
-               << " " << token.column << " " << encodeString(token.filename);
+            ss << static_cast<int>(token.kind) << " " << encodeString(token.text) << " " << token.line << " "
+               << token.column << " " << encodeString(token.filename);
             return ss.str();
         }
 
@@ -176,7 +176,7 @@ namespace rp {
             return true;
         }
 
-        std::string TokenSerializer::encodeString(const std::string& str) {
+        std::string TokenSerializer::encodeString(std::string_view str) {
             std::stringstream ss;
             ss << std::hex;
             for (unsigned char c : str) {

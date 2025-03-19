@@ -60,6 +60,10 @@ namespace rp {
             std::deque<Token> tokenCache;
             static const size_t MAX_LOOKAHEAD = 3;
 
+          protected:
+            // 获取诊断引擎
+            DiagnosticEngine* getDiagnostics() const { return diagnostics.get(); }
+
           private:
             // 组件
             std::unique_ptr<Scanner> scanner;

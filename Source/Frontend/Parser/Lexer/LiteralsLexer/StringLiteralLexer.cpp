@@ -1,231 +1,177 @@
-
 #include "Frontend/Parser/Lexer/LiteralsLexer/StringLiteralLexer.h"
 
 #include <cctype>
 #include <sstream>
 
+#include "Frontend/Parser/Lexer/Utils/Unicode.h"
+#include "Frontend/Parser/Lexer/Utils/UnicodeEscape.h"
+
 namespace rp {
     namespace frontend {
 
-        std::string StringLiteralLexer::processEscapeSequences(const std::string &raw) {
-            std::string result;
-            size_t pos = 0;
-
-            while (pos < raw.length()) {
-                char c = raw[pos];
-
-                if (c == '\\') {
-                    pos++;
-                    if (pos >= raw.length()) {
-                        break;
-                    }
-
-                    switch (raw[pos]) {
-                        case 'n':
-                            result += '\n';
-                            break;
-                        case 't':
-                            result += '\t';
-                            break;
-                        case 'r':
-                            result += '\r';
-                            break;
-                        case 'b':
-                            result += '\b';
-                            break;
-                        case 'f':
-                            result += '\f';
-                            break;
-                        case 'v':
-                            result += '\v';
-                            break;
-                        case 'a':
-                            result += '\a';
-                            break;
-                        case '\\':
-                            result += '\\';
-                            break;
-                        case '\'':
-                            result += '\'';
-                            break;
-                        case '"':
-                            result += '"';
-                            break;
-                        case '0':
-                            result += '\0';
-                            break;
-                        case 'u':  // Unicode转义序列
-                            pos++;
-                            if (!processUnicodeEscape(raw, pos, result)) {
-                                return "";
-                            }
-                            pos--;  // 因为外层循环会pos++
-                            break;
-                        case 'x':
-                            {  // 十六进制转义序列
-                                pos++;
-                                if (pos + 1 >= raw.length()) return "";
-                                char hex[3] = {raw[pos], raw[pos + 1], 0};
-                                char value = static_cast<char>(std::stoi(hex, nullptr, 16));
-                                result += value;
-                                pos += 1;
-                                break;
-                            }
-                        default:
-                            // 无效的转义序列
-                            return "";
-                    }
-                } else {
-                    result += c;
-                }
-                pos++;
-            }
-
-            return result;
-        }
-
-        bool StringLiteralLexer::validateStringLiteral(const std::string &str, std::string &error) {
-            // 检查未闭合的引号
-            int quoteCount = 0;
-            for (char c : str) {
-                if (c == '"') quoteCount++;
-            }
-
-            if (quoteCount % 2 != 0) {
-                error = "Unclosed string literal";
+        bool StringLiteralLexer::processStringLiteral(const std::string &input,
+                                                      std::string &output,
+                                                      size_t &consumed,
+                                                      std::string &error) {
+            if (input.empty() || input[0] != '"') {
+                error = "String literal must start with double quote";
                 return false;
             }
 
-            // 检查非法字符
-            for (size_t i = 0; i < str.length(); i++) {
-                char c = str[i];
-                if (c == '\n' || c == '\r') {
-                    error = "Unterminated string literal";
-                    return false;
+            size_t pos = 1;  // 跳过开始的双引号
+            output.clear();
+            const size_t inputLength = input.length();
+            bool isMultiline = false;
+
+            // 检查是否是多行字符串
+            if (pos + 1 < inputLength && input[pos] == '"' && input[pos + 1] == '"') {
+                isMultiline = true;
+                pos += 2;
+                // 如果多行字符串开始后直接是换行，跳过第一个换行
+                if (pos < inputLength && input[pos] == '\n') {
+                    pos++;
+                } else if (pos + 1 < inputLength && input[pos] == '\r' && input[pos + 1] == '\n') {
+                    pos += 2;
                 }
             }
 
-            return true;
+            while (pos < inputLength) {
+                char c = input[pos];
+
+                if (c == '"') {
+                    if (isMultiline) {
+                        // 检查是否是多行字符串的结束 """
+                        if (pos + 2 < inputLength && input[pos + 1] == '"' && input[pos + 2] == '"') {
+                            consumed = pos + 3;
+                            return true;
+                        }
+                        output += c;
+                        pos++;
+                    } else {
+                        // 普通字符串结束
+                        consumed = pos + 1;
+                        return true;
+                    }
+                } else if (c == '\\') {
+                    // 处理转义序列
+                    std::string_view remaining(input.data() + pos, input.length() - pos);
+
+                    if (isMultiline) {
+                        // 处理行连续
+                        auto lineContResult = UnicodeEscape::processLineContinuation(remaining);
+                        if (lineContResult.success) {
+                            pos += lineContResult.consumed;
+                            continue;
+                        }
+                    }
+
+                    auto result = UnicodeEscape::parseEscapeSequence(remaining);
+                    if (!result.success) {
+                        error = result.error;
+                        return false;
+                    }
+
+                    output += result.value;
+                    pos += result.consumed;
+                } else if (!isMultiline && (c == '\n' || c == '\r')) {
+                    error = "Unterminated string literal";
+                    return false;
+                } else {
+                    // 处理普通字符或UTF-8序列
+                    auto charResult = Unicode::processUtf8Character(input, pos);
+                    if (!charResult.success) {
+                        error = charResult.error;
+                        return false;
+                    }
+
+                    output += input.substr(pos, charResult.consumed);
+                    pos += charResult.consumed;
+                }
+            }
+
+            error = "Unterminated string literal";
+            return false;
         }
 
         bool StringLiteralLexer::processRawStringLiteral(const std::string &input,
                                                          std::string &output,
+                                                         size_t &consumed,
                                                          std::string &error) {
-            // R"delim(raw_characters)delim"
-            if (input.length() < 4 || input[0] != 'R' || input[1] != '"') {
-                error = "Invalid raw string literal format";
+            // 检查R"开头
+            if (input.length() < 2 || input[0] != 'R' || input[1] != '"') {
+                error = "Raw string literal must start with R\"";
                 return false;
             }
+
+            size_t pos = 2;  // 跳过R"
+            const size_t inputLength = input.length();
 
             // 查找分隔符
-            size_t delimStart = 2;
-            size_t delimEnd = input.find('(', delimStart);
-            if (delimEnd == std::string::npos) {
-                error = "Missing opening parenthesis in raw string";
-                return false;
+            std::string delimiter;
+            while (pos < inputLength && input[pos] != '(') {
+                char c = input[pos];
+                // 分隔符只能包含: [a-zA-Z0-9_]
+                if (!std::isalnum(c) && c != '_') {
+                    error = "Invalid character in raw string delimiter";
+                    return false;
+                }
+                delimiter += c;
+                pos++;
+                if (delimiter.length() > 16) {
+                    error = "Raw string delimiter too long (maximum 16 characters)";
+                    return false;
+                }
             }
 
-            std::string delim = input.substr(delimStart, delimEnd - delimStart);
-            if (delim.length() > 16) {
-                error = "Raw string delimiter too long";
+            if (pos >= inputLength || input[pos] != '(') {
+                error = "Expected '(' after delimiter in raw string";
                 return false;
             }
+            pos++;  // 跳过'('
 
-            // 查找结束位置
-            std::string endDelim = ")" + delim + "\"";
-            size_t contentStart = delimEnd + 1;
-            size_t contentEnd = input.find(endDelim, contentStart);
+            // 查找结束序列 )delimiter"
+            std::string endSequence = ")" + delimiter + "\"";
+            size_t contentStart = pos;
+            size_t contentEnd = input.find(endSequence, contentStart);
+
             if (contentEnd == std::string::npos) {
                 error = "Unterminated raw string literal";
                 return false;
             }
 
-            output = input.substr(contentStart, contentEnd - contentStart);
+            // 提取原始字符串内容
+            size_t contentLength = contentEnd - contentStart;
+            auto result = Unicode::processUtf8String(input, contentStart, contentLength);
+
+            if (!result.success) {
+                error = result.error;
+                return false;
+            }
+
+            output = std::move(result.value);
+            consumed = contentEnd + endSequence.length();
             return true;
         }
 
-        bool StringLiteralLexer::processEscapeSequence(const std::string &input, size_t &pos, std::string &output) {
-            if (pos >= input.length()) return false;
-
-            char c = input[pos];
-            switch (c) {
-                case 'n':
-                    output += '\n';
-                    break;
-                case 't':
-                    output += '\t';
-                    break;
-                case 'r':
-                    output += '\r';
-                    break;
-                case 'b':
-                    output += '\b';
-                    break;
-                case 'f':
-                    output += '\f';
-                    break;
-                case 'v':
-                    output += '\v';
-                    break;
-                case 'a':
-                    output += '\a';
-                    break;
-                case '\\':
-                    output += '\\';
-                    break;
-                case '\'':
-                    output += '\'';
-                    break;
-                case '"':
-                    output += '"';
-                    break;
-                case '0':
-                    output += '\0';
-                    break;
-                case 'u':
-                    return processUnicodeEscape(input, pos, output);
-                case 'x':
-                    {
-                        if (pos + 2 >= input.length()) return false;
-                        std::string hex = input.substr(pos + 1, 2);
-                        char value = static_cast<char>(std::stoi(hex, nullptr, 16));
-                        output += value;
-                        pos += 2;
-                        break;
-                    }
-                default:
-                    return false;
+        bool StringLiteralLexer::validateStringLiteral(const std::string &str, std::string &error) {
+            if (str.empty()) {
+                return true;  // 空字符串是合法的
             }
 
-            return true;
-        }
-
-        bool StringLiteralLexer::processUnicodeEscape(const std::string &input, size_t &pos, std::string &output) {
-            if (pos + 4 >= input.length()) return false;
-
-            // 读取4位十六进制数
-            std::string hex = input.substr(pos, 4);
-            for (char c : hex) {
-                if (!std::isxdigit(c)) return false;
+            // 对于原始字符串字面量，只需要验证UTF-8编码
+            if (str.length() >= 2 && str[0] == 'R' && str[1] == '"') {
+                return Unicode::validateUtf8String(str, error);
             }
 
-            // 转换为Unicode码点
-            unsigned int codePoint = std::stoul(hex, nullptr, 16);
-
-            // 转换为UTF-8编码
-            if (codePoint < 0x80) {
-                output += static_cast<char>(codePoint);
-            } else if (codePoint < 0x800) {
-                output += static_cast<char>((codePoint >> 6) | 0xC0);
-                output += static_cast<char>((codePoint & 0x3F) | 0x80);
-            } else {
-                output += static_cast<char>((codePoint >> 12) | 0xE0);
-                output += static_cast<char>(((codePoint >> 6) & 0x3F) | 0x80);
-                output += static_cast<char>((codePoint & 0x3F) | 0x80);
+            // 对于普通字符串字面量，需要验证转义序列
+            auto result = UnicodeEscape::unescapeString(str);
+            if (!result.success) {
+                error = result.error;
+                return false;
             }
 
-            pos += 3;  // pos会在外部再++
-            return true;
+            // 验证解析后的字符串是否是有效的UTF-8
+            return Unicode::validateUtf8String(result.value, error);
         }
 
     }  // namespace frontend

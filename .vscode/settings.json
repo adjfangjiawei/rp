@@ -145,5 +145,5 @@
         // 启动模块支持
         "--experimental-modules-support"
     ],
-    "testMate.cpp.test.executables": "${workspaceFolder}/build/bin/*"
+    "testMate.cpp.test.executables": "${workspaceFolder}/Build/bin/*"
 }

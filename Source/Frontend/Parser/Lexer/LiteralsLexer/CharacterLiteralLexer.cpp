@@ -1,8 +1,10 @@
-
 #include "Frontend/Parser/Lexer/LiteralsLexer/CharacterLiteralLexer.h"
 
 #include <cctype>
 #include <sstream>
+
+#include "Frontend/Parser/Lexer/Utils/Unicode.h"
+#include "Frontend/Parser/Lexer/Utils/UnicodeEscape.h"
 
 namespace rp {
     namespace frontend {
@@ -11,15 +13,30 @@ namespace rp {
                                                             size_t &pos,
                                                             long long &value,
                                                             std::string &error) {
+            // 初始化和基本检查
+            if (input.empty()) {
+                error = "Empty input for character literal";
+                return false;
+            }
+
+            const size_t startPos = pos;
+            const size_t inputLength = input.length();
+
             // 检查起始单引号
-            if (input.empty() || input[pos] != '\'') {
-                error = "Expected single quote at start of character literal";
+            if (pos >= inputLength || input[pos] != '\'') {
+                error = "Character literal must start with a single quote";
                 return false;
             }
             pos++;
 
-            // 空字符字面量
-            if (pos >= input.length()) {
+            // 检查空字符字面量
+            if (pos >= inputLength) {
+                error = "Unexpected end of input after opening quote";
+                return false;
+            }
+
+            // 检查直接结束的情况
+            if (input[pos] == '\'') {
                 error = "Empty character literal";
                 return false;
             }
@@ -28,163 +45,98 @@ namespace rp {
             if (input[pos] == '\\') {
                 // 处理转义序列
                 pos++;
-                if (!processEscapeSequence(input, pos, value)) {
-                    error = "Invalid escape sequence";
+                if (pos >= inputLength) {
+                    error = "Unexpected end of input after backslash";
+                    pos = startPos;
                     return false;
                 }
-            } else if (static_cast<unsigned char>(input[pos]) >= 0x80) {
-                // 处理Unicode字符
-                if (!processUnicodeChar(input, pos, value)) {
-                    error = "Invalid Unicode character";
+
+                std::string_view remaining(input.data() + pos - 1, input.length() - (pos - 1));
+                auto result = UnicodeEscape::parseEscapeSequence(remaining);
+
+                if (!result.success) {
+                    error = result.error;
+                    pos = startPos;
                     return false;
                 }
+
+                // 确保转义序列只产生一个字符
+                if (result.value.length() != 1) {
+                    error = "Character literal can only contain one character";
+                    pos = startPos;
+                    return false;
+                }
+
+                value = static_cast<unsigned char>(result.value[0]);
+                pos += result.consumed - 1;  // -1是因为我们已经跳过了反斜杠
             } else {
-                // 处理普通ASCII字符
-                value = static_cast<long long>(input[pos]);
-                pos++;
+                // 处理普通字符或UTF-8字符
+                auto charResult = Unicode::processCharacter(input, pos);
+                if (!charResult.success) {
+                    error = charResult.error;
+                    pos = startPos;
+                    return false;
+                }
+
+                value = charResult.value;
+                pos += charResult.consumed;
             }
 
             // 检查结束单引号
-            if (pos >= input.length() || input[pos] != '\'') {
-                error = "Expected single quote at end of character literal";
+            if (pos >= inputLength || input[pos] != '\'') {
+                error = "Character literal missing closing quote";
+                pos = startPos;
                 return false;
             }
-            pos++;
+            pos++;  // 跳过结束引号
 
             return true;
         }
 
         bool CharacterLiteralLexer::validateCharacterLiteral(const std::string &str, std::string &error) {
-            // 检查基本格式
-            if (str.length() < 3) {  // 最少需要3个字符：'x'
-                error = "Character literal too short";
+            // 基本长度检查
+            if (str.empty()) {
+                error = "Empty character literal";
                 return false;
             }
 
+            if (str.length() < 3) {
+                error = "Character literal too short (minimum length is 3: 'x')";
+                return false;
+            }
+
+            // 检查引号
             if (str[0] != '\'' || str[str.length() - 1] != '\'') {
                 error = "Character literal must be enclosed in single quotes";
                 return false;
             }
 
-            // 检查字符数量（不包括引号）
-            size_t contentLength = str.length() - 2;
-            if (contentLength > 4) {  // UTF-8最多4字节
-                error = "Character literal too long";
+            // 检查内容长度
+            size_t contentLength = str.length() - 2;  // 减去两个引号
+            if (contentLength == 0) {
+                error = "Empty character literal";
                 return false;
             }
 
-            return true;
-        }
+            // 提取字符内容
+            std::string content = str.substr(1, contentLength);
 
-        bool CharacterLiteralLexer::processEscapeSequence(const std::string &input, size_t &pos, long long &value) {
-            if (pos >= input.length()) return false;
-
-            char c = input[pos];
-            switch (c) {
-                case 'n':
-                    value = '\n';
-                    break;
-                case 't':
-                    value = '\t';
-                    break;
-                case 'r':
-                    value = '\r';
-                    break;
-                case 'b':
-                    value = '\b';
-                    break;
-                case 'f':
-                    value = '\f';
-                    break;
-                case 'v':
-                    value = '\v';
-                    break;
-                case 'a':
-                    value = '\a';
-                    break;
-                case '\\':
-                    value = '\\';
-                    break;
-                case '\'':
-                    value = '\'';
-                    break;
-                case '"':
-                    value = '"';
-                    break;
-                case '0':
-                    value = '\0';
-                    break;
-                case 'u':  // Unicode转义序列
-                    pos++;
-                    return processUnicodeChar(input, pos, value);
-                case 'x':
-                    {  // 十六进制转义序列
-                        if (pos + 2 >= input.length()) return false;
-                        std::string hex = input.substr(pos + 1, 2);
-                        try {
-                            value = std::stoll(hex, nullptr, 16);
-                        } catch (...) {
-                            return false;
-                        }
-                        pos += 2;
-                        break;
-                    }
-                default:
-                    return false;
-            }
-
-            pos++;
-            return true;
-        }
-
-        bool CharacterLiteralLexer::processUnicodeChar(const std::string &input, size_t &pos, long long &value) {
-            if (pos + 4 >= input.length()) return false;
-
-            // 读取4位十六进制数
-            std::string hex = input.substr(pos, 4);
-            for (char c : hex) {
-                if (!std::isxdigit(c)) return false;
-            }
-
-            // 转换为Unicode码点
-            unsigned int codepoint;
-            try {
-                codepoint = std::stoul(hex, nullptr, 16);
-            } catch (...) {
-                return false;
-            }
-
-            // 转换为UTF-8编码
-            if (!processUtf8Encoding(codepoint, value)) {
-                return false;
-            }
-
-            pos += 3;  // pos会在外部再++
-            return true;
-        }
-
-        bool CharacterLiteralLexer::processUtf8Encoding(unsigned int codepoint, long long &value) {
-            // UTF-8编码规则
-            if (codepoint < 0x80) {
-                // 单字节UTF-8
-                value = codepoint;
-            } else if (codepoint < 0x800) {
-                // 双字节UTF-8
-                value = ((codepoint >> 6) | 0xC0) << 8;
-                value |= ((codepoint & 0x3F) | 0x80);
-            } else if (codepoint < 0x10000) {
-                // 三字节UTF-8
-                value = ((codepoint >> 12) | 0xE0) << 16;
-                value |= (((codepoint >> 6) & 0x3F) | 0x80) << 8;
-                value |= ((codepoint & 0x3F) | 0x80);
-            } else if (codepoint < 0x110000) {
-                // 四字节UTF-8
-                value = ((codepoint >> 18) | 0xF0) << 24;
-                value |= (((codepoint >> 12) & 0x3F) | 0x80) << 16;
-                value |= (((codepoint >> 6) & 0x3F) | 0x80) << 8;
-                value |= ((codepoint & 0x3F) | 0x80);
+            if (content[0] == '\\') {
+                // 验证转义序列
+                return UnicodeEscape::validateEscapeSequence(content, error);
             } else {
-                return false;  // 无效的Unicode码点
+                // 验证UTF-8字符
+                size_t bytesConsumed;
+                if (!Unicode::validateUtf8Sequence(content, 0, bytesConsumed)) {
+                    error = "Invalid UTF-8 sequence";
+                    return false;
+                }
+
+                // 确保只有一个字符
+                if (bytesConsumed != content.length()) {
+                    error = "Character literal can only contain one character";
+                    return false;
+                }
             }
 
             return true;
