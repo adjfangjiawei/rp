@@ -2,6 +2,7 @@
 
 // Include all token definition files
 #include "TokenDefs/BaseTokens.def"
+#include "TokenDefs/StringLiterals.def"
 #include "TokenDefs/Keywords.def"
 #include "TokenDefs/Operators.def"
 #include "TokenDefs/Delimiters.def"

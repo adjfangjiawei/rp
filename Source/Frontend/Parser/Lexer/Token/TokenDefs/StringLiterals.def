@@ -1,0 +1,20 @@
+// String literal tokens
+TOKEN(StringLiteral,          "string literal")              // 普通字符串字面量
+TOKEN(RawStringLiteral,       "raw string literal")          // 原始字符串字面量
+TOKEN(WideStringLiteral,      "wide string literal")         // 宽字符串字面量 L"..."
+TOKEN(UTF8StringLiteral,      "UTF-8 string literal")        // UTF-8字符串字面量 u8"..."
+TOKEN(UTF16StringLiteral,     "UTF-16 string literal")       // UTF-16字符串字面量 u"..."
+TOKEN(UTF32StringLiteral,     "UTF-32 string literal")       // UTF-32字符串字面量 U"..."
+
+// String literal prefixes
+TOKEN(StringPrefix_L,         "L")                           // 宽字符串前缀
+TOKEN(StringPrefix_u8,        "u8")                         // UTF-8字符串前缀
+TOKEN(StringPrefix_u,         "u")                          // UTF-16字符串前缀
+TOKEN(StringPrefix_U,         "U")                          // UTF-32字符串前缀
+TOKEN(StringPrefix_R,         "R")                          // 原始字符串前缀
+
+// String literal errors
+TOKEN(StringLiteral_Unterminated,    "unterminated string literal")
+TOKEN(StringLiteral_InvalidEscape,   "invalid escape sequence in string literal")
+TOKEN(StringLiteral_InvalidUTF8,     "invalid UTF-8 sequence in string literal")
+TOKEN(StringLiteral_InvalidDelimiter, "invalid delimiter in raw string literal")

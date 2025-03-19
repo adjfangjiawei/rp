@@ -26,6 +26,26 @@ namespace rp {
                 bool boolValue;
             };
 
+            // 错误恢复信息
+            struct ErrorInfo {
+                bool hasError{false};
+                std::string message;
+                unsigned errorLine{0};
+                unsigned errorColumn{0};
+            };
+            std::shared_ptr<ErrorInfo> errorInfo;
+
+            // 字符串字面量的额外信息
+            struct StringInfo {
+                bool isRawString{false};
+                std::string delimiter;  // 原始字符串的分隔符
+                bool isWide{false};     // 是否是宽字符串
+                bool isUTF8{false};     // 是否是UTF-8字符串
+                bool isUTF16{false};    // 是否是UTF-16字符串
+                bool isUTF32{false};    // 是否是UTF-32字符串
+            };
+            std::shared_ptr<StringInfo> stringInfo;
+
             // 默认构造函数
             Token() : kind(TokenKind::Invalid), line(0), column(0), intValue(0) {}
 
@@ -78,6 +98,60 @@ namespace rp {
                 text = textStorage;
             }
 
+            // 设置错误信息
+            void setError(const std::string& message, unsigned errorLine = 0, unsigned errorColumn = 0) {
+                if (!errorInfo) {
+                    errorInfo = std::make_shared<ErrorInfo>();
+                }
+                errorInfo->hasError = true;
+                errorInfo->message = message;
+                errorInfo->errorLine = errorLine ? errorLine : line;
+                errorInfo->errorColumn = errorColumn ? errorColumn : column;
+            }
+
+            // 设置字符串信息
+            void setStringInfo(bool isRaw = false, const std::string& delim = "") {
+                if (!stringInfo) {
+                    stringInfo = std::make_shared<StringInfo>();
+                }
+                stringInfo->isRawString = isRaw;
+                stringInfo->delimiter = delim;
+            }
+
+            // 设置字符串编码类型
+            void setStringEncoding(bool isWide = false,
+                                   bool isUTF8 = false,
+                                   bool isUTF16 = false,
+                                   bool isUTF32 = false) {
+                if (!stringInfo) {
+                    stringInfo = std::make_shared<StringInfo>();
+                }
+                stringInfo->isWide = isWide;
+                stringInfo->isUTF8 = isUTF8;
+                stringInfo->isUTF16 = isUTF16;
+                stringInfo->isUTF32 = isUTF32;
+            }
+
+            // 检查是否有错误
+            bool hasError() const { return errorInfo && errorInfo->hasError; }
+
+            // 获取错误信息
+            std::string getErrorMessage() const { return errorInfo ? errorInfo->message : ""; }
+
+            // 检查字符串类型
+            bool isRawString() const { return stringInfo && stringInfo->isRawString; }
+
+            bool isWideString() const { return stringInfo && stringInfo->isWide; }
+
+            bool isUTF8String() const { return stringInfo && stringInfo->isUTF8; }
+
+            bool isUTF16String() const { return stringInfo && stringInfo->isUTF16; }
+
+            bool isUTF32String() const { return stringInfo && stringInfo->isUTF32; }
+
+            // 获取原始字符串分隔符
+            std::string getDelimiter() const { return stringInfo ? stringInfo->delimiter : ""; }
+
             // 拷贝构造函数
             Token(const Token& other)
                 : kind(other.kind),
@@ -85,7 +159,9 @@ namespace rp {
                   line(other.line),
                   column(other.column),
                   filename(other.filename),
-                  intValue(other.intValue) {
+                  intValue(other.intValue),
+                  errorInfo(other.errorInfo),
+                  stringInfo(other.stringInfo) {
                 text = textStorage;
             }
 
@@ -99,6 +175,8 @@ namespace rp {
                     column = other.column;
                     filename = other.filename;
                     intValue = other.intValue;
+                    errorInfo = other.errorInfo;
+                    stringInfo = other.stringInfo;
                 }
                 return *this;
             }
@@ -110,7 +188,9 @@ namespace rp {
                   line(other.line),
                   column(other.column),
                   filename(std::move(other.filename)),
-                  intValue(other.intValue) {
+                  intValue(other.intValue),
+                  errorInfo(std::move(other.errorInfo)),
+                  stringInfo(std::move(other.stringInfo)) {
                 text = textStorage;
             }
 
@@ -124,6 +204,8 @@ namespace rp {
                     column = other.column;
                     filename = std::move(other.filename);
                     intValue = other.intValue;
+                    errorInfo = std::move(other.errorInfo);
+                    stringInfo = std::move(other.stringInfo);
                 }
                 return *this;
             }

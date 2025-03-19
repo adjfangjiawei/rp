@@ -1,6 +1,8 @@
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <memory>
+#include <sstream>
 #include <string>
 
 #include "Frontend/Diagnostic/Diagnostic.h"
@@ -17,42 +19,17 @@ int main() {
     auto diagEngine = std::make_shared<DiagnosticEngine>();
     Lexer lexer(diagEngine);
 
-    // 测试各种字符串字面量
-    const char* testCode = R"(
-    // 基本字符串字面量
-    "Hello, World!"
-    ""  // 空字符串
-    
-    // 字符字面量
-    'a'
-    '\n'
-    
-    // 转义序列
-    "First line\nSecond line"  // 换行
-    "Tab\there"                // 制表符
-    "Quote\"inside\"quote"     // 引号转义
-    "Backslash: \\"           // 反斜杠转义
-    "\x48\x65\x6C\x6C\x6F"    // 十六进制转义
-    "\110\145\154\154\157"    // 八进制转义
-    
-    // Unicode字符
-    "Unicode: \u0048\u0065\u006C\u006C\u006F"  // Unicode转义
-    "Wide: \U0001F600"  // 宽Unicode字符(emoji)
-    
-    // 原始字符串(Raw strings)
-    R"(This is a raw string
-    No need to escape \n or \t
-    Can span multiple lines)"
+    // 从文件读取测试代码
+    std::ifstream file("Example/Frontend/Lexer/test_input.txt");
+    if (!file.is_open()) {
+        std::cerr << "无法打开测试文件" << std::endl;
+        return 1;
+    }
 
-                           // 带分隔符的原始字符串
-                           R"delim(This string has )delim inside)delim"
-
-                           // 字符串连接
-                           "Hello "
-                           "World"  // 自动连接
-                           "Multi-line "
-                           "string "
-                           "concatenation";
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string testCodeStr = buffer.str();
+    const char* testCode = testCodeStr.c_str();
 
     lexer.setSource(testCode, strlen(testCode), "string_test.cpp");
 

@@ -10,6 +10,68 @@
 namespace rp {
     namespace frontend {
 
+        // 跳过空白字符和注释
+        void Lexer::skipWhitespaceAndComments() {
+            while (currentPos < sourceLength) {
+                char c = source[currentPos];
+                char next = (currentPos + 1 < sourceLength) ? source[currentPos + 1] : '\0';
+
+                // 处理空白字符
+                if (isspace(c)) {
+                    if (c == '\n') {
+                        currentLine++;
+                        currentColumn = 1;
+                    } else {
+                        currentColumn++;
+                    }
+                    currentPos++;
+                    continue;
+                }
+
+                // 处理注释
+                if (c == '/' && next == '/') {
+                    // 单行注释
+                    currentPos += 2;
+                    currentColumn += 2;
+                    while (currentPos < sourceLength && source[currentPos] != '\n') {
+                        currentPos++;
+                        currentColumn++;
+                    }
+                    continue;
+                }
+
+                if (c == '/' && next == '*') {
+                    // 多行注释
+                    currentPos += 2;
+                    currentColumn += 2;
+                    bool foundEnd = false;
+                    while (currentPos < sourceLength - 1) {
+                        if (source[currentPos] == '*' && source[currentPos + 1] == '/') {
+                            currentPos += 2;
+                            currentColumn += 2;
+                            foundEnd = true;
+                            break;
+                        }
+                        if (source[currentPos] == '\n') {
+                            currentLine++;
+                            currentColumn = 1;
+                        } else {
+                            currentColumn++;
+                        }
+                        currentPos++;
+                    }
+                    if (!foundEnd) {
+                        // 未闭合的多行注释
+                        reportError("Unterminated multi-line comment", currentLine, currentColumn);
+                    }
+                    continue;
+                }
+
+                // 不是空白字符或注释，退出循环
+                break;
+            }
+        }
+
         std::string Lexer::getErrorContext(size_t line, size_t column, size_t context_lines) const {
             std::string result;
             size_t start_line = (line > context_lines) ? line - context_lines : 1;
@@ -65,6 +127,8 @@ namespace rp {
 
             try {
                 char c = source[currentPos];
+                char next = (currentPos + 1 < sourceLength) ? source[currentPos + 1] : '\0';
+                char nextnext = (currentPos + 2 < sourceLength) ? source[currentPos + 2] : '\0';
 
                 // 更新扫描器的位置
                 scanner->setPosition(currentPos, currentLine, currentColumn);
@@ -105,21 +169,61 @@ namespace rp {
                 }
 
                 // 字符串字面量
-                if (c == '"' || (c == 'L' && currentPos + 1 < sourceLength && source[currentPos + 1] == '"') ||
-                    (c == 'u' && currentPos + 1 < sourceLength && source[currentPos + 1] == '"') ||
-                    (c == 'U' && currentPos + 1 < sourceLength && source[currentPos + 1] == '"') ||
-                    (c == 'u' && currentPos + 1 < sourceLength && source[currentPos + 1] == '8' &&
-                     currentPos + 2 < sourceLength && source[currentPos + 2] == '"') ||
-                    (c == 'R' && currentPos + 1 < sourceLength && source[currentPos + 1] == '"')) {
-                    StringLiteralLexer stringLexer(this->diagnostics);
+                bool isStringStart = false;
+                bool isRawString = false;
+                size_t prefixLen = 0;
+
+                // 检查各种字符串前缀
+                if (c == '"') {
+                    // 普通字符串字面量
+                    isStringStart = true;
+                } else if (currentPos + 1 < sourceLength) {
+                    if (c == 'R' && next == '"') {
+                        // R"..." 原始字符串字面量
+                        isStringStart = true;
+                        isRawString = true;
+                        prefixLen = 1;
+                    } else if ((c == 'L' || c == 'u' || c == 'U') && next == '"') {
+                        // L"...", u"...", U"..." 宽字符串字面量
+                        isStringStart = true;
+                        prefixLen = 1;
+                    } else if (currentPos + 2 < sourceLength) {
+                        if ((c == 'L' || c == 'u' || c == 'U') && next == 'R' && nextnext == '"') {
+                            // LR"...", uR"...", UR"..." 原始宽字符串字面量
+                            isStringStart = true;
+                            isRawString = true;
+                            prefixLen = 2;
+                        } else if (c == 'u' && next == '8' && nextnext == '"') {
+                            // u8"..." UTF-8字符串字面量
+                            isStringStart = true;
+                            prefixLen = 2;
+                        } else if (currentPos + 3 < sourceLength && c == 'u' && next == '8' && nextnext == 'R' &&
+                                   source[currentPos + 3] == '"') {
+                            // u8R"..." 原始UTF-8字符串字面量
+                            isStringStart = true;
+                            isRawString = true;
+                            prefixLen = 3;
+                        }
+                    }
+                }
+
+                if (isStringStart) {
+                    StringLiteralLexer stringLexer(diagnostics);
                     stringLexer.setSource(source, sourceLength, filename);
                     stringLexer.currentPos = currentPos;
                     stringLexer.currentLine = currentLine;
                     stringLexer.currentColumn = currentColumn;
                     Token token = stringLexer.scan();
-                    currentPos = stringLexer.currentPos;
-                    currentLine = stringLexer.currentLine;
-                    currentColumn = stringLexer.currentColumn;
+
+                    // 只有在成功解析时才更新位置
+                    if (token.getKind() != TokenKind::Invalid) {
+                        currentPos = stringLexer.currentPos;
+                        currentLine = stringLexer.currentLine;
+                        currentColumn = stringLexer.currentColumn;
+                    } else {
+                        // 如果解析失败，使用错误恢复
+                        recoverFromError();
+                    }
                     return token;
                 }
 
@@ -160,8 +264,12 @@ namespace rp {
             bool inChar = false;
             bool inComment = false;
             bool inRawString = false;
+            bool foundRawOpenParen = false;
+            bool collectingRawDelimiter = false;
             std::string rawDelimiter;
             size_t startPos = currentPos;
+            size_t startLine = currentLine;
+            size_t startColumn = currentColumn;
 
             while (currentPos < sourceLength) {
                 char c = source[currentPos];
@@ -172,8 +280,7 @@ namespace rp {
                 if (c == '\n') {
                     currentLine++;
                     currentColumn = 1;
-                    // 换行会终止单行注释和未终止的普通字符串/字符字面量
-                    // 但不会终止原始字符串
+                    // 换行只会终止单行注释和未终止的普通字符串/字符字面量
                     inComment = false;
                     if (!inRawString) {
                         inString = false;
@@ -183,79 +290,88 @@ namespace rp {
                     currentColumn++;
                 }
 
+                // 处理原始字符串的特殊情况
+                if (inRawString) {
+                    if (!foundRawOpenParen) {
+                        if (c == '(') {
+                            foundRawOpenParen = true;
+                            collectingRawDelimiter = false;
+                        } else if (collectingRawDelimiter) {
+                            if (isalnum(c) || c == '_') {
+                                rawDelimiter += c;
+                                if (rawDelimiter.length() > 16) {
+                                    // 分隔符过长，认为是错误的，重置状态
+                                    inRawString = false;
+                                    rawDelimiter.clear();
+                                    collectingRawDelimiter = false;
+                                }
+                            } else {
+                                // 非法分隔符字符，重置状态
+                                inRawString = false;
+                                rawDelimiter.clear();
+                                collectingRawDelimiter = false;
+                            }
+                        }
+                    } else {
+                        // 检查是否找到结束序列
+                        if (c == ')') {
+                            size_t endPos = currentPos + 1;
+                            bool isEnd = true;
+                            // 检查分隔符
+                            for (size_t i = 0; i < rawDelimiter.length(); i++) {
+                                if (endPos + i >= sourceLength || source[endPos + i] != rawDelimiter[i]) {
+                                    isEnd = false;
+                                    break;
+                                }
+                            }
+                            // 检查结束引号
+                            if (isEnd && endPos + rawDelimiter.length() < sourceLength &&
+                                source[endPos + rawDelimiter.length()] == '"') {
+                                currentPos = endPos + rawDelimiter.length() + 1;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // 检查是否找到了新的有效token开始
+                if (!inString && !inChar && !inComment && !inRawString) {
+                    // 检查各种token的开始标记
+                    if (isalpha(c) || c == '_' ||                  // 标识符
+                        isdigit(c) ||                              // 数字
+                        c == '"' ||                                // 字符串
+                        c == '\'' ||                               // 字符
+                        c == '#' ||                                // 预处理指令
+                        strchr("+-*/%<>=!&|^~.,:;()[]{}\\", c)) {  // 运算符和标点
+                        break;
+                    }
+                }
+
+                // 检查字符串和字符字面量的边界
+                if (!inComment) {
+                    if (c == '"' && prev != '\\') {
+                        if (inString) {
+                            inString = false;
+                            currentPos++;  // 包含结束引号
+                            break;
+                        } else if (!inChar && !inRawString) {
+                            break;  // 找到新的字符串开始
+                        }
+                    } else if (c == '\'' && prev != '\\') {
+                        if (inChar) {
+                            inChar = false;
+                            currentPos++;  // 包含结束引号
+                            break;
+                        } else if (!inString && !inRawString) {
+                            break;  // 找到新的字符字面量开始
+                        }
+                    }
+                }
+
                 // 检查注释
                 if (!inString && !inChar && !inRawString && c == '/' && next == '/') {
                     inComment = true;
-                }
-
-                // 检查原始字符串
-                if (!inString && !inChar && !inComment && c == 'R' && next == '"') {
-                    inRawString = true;
-                    currentPos += 2;  // 跳过R"
-                    // 读取分隔符
-                    size_t delimStart = currentPos;
-                    while (currentPos < sourceLength && source[currentPos] != '(') {
-                        if (source[currentPos] == '\n') {
-                            inRawString = false;
-                            break;
-                        }
-                        rawDelimiter += source[currentPos];
-                        currentPos++;
-                    }
-                    if (inRawString && currentPos < sourceLength && source[currentPos] == '(') {
-                        currentPos++;  // 跳过(
-                    } else {
-                        inRawString = false;
-                        rawDelimiter.clear();
-                        currentPos = delimStart;
-                    }
-                    continue;
-                }
-
-                // 检查原始字符串的结束
-                if (inRawString && c == ')') {
-                    size_t endPos = currentPos + 1;
-                    bool foundEnd = true;
-                    // 检查分隔符
-                    for (char delimChar : rawDelimiter) {
-                        if (endPos >= sourceLength || source[endPos] != delimChar) {
-                            foundEnd = false;
-                            break;
-                        }
-                        endPos++;
-                    }
-                    if (foundEnd && endPos < sourceLength && source[endPos] == '"') {
-                        currentPos = endPos + 1;  // 跳过结束引号
-                        inRawString = false;
-                        rawDelimiter.clear();
-                        break;  // 找到有效的token边界
-                    }
-                }
-
-                // 检查普通字符串边界
-                if (!inComment && !inChar && !inRawString && c == '"' && prev != '\\') {
-                    if (!inString) {
-                        // 找到新的字符串开始
-                        break;
-                    }
-                    inString = !inString;
-                }
-
-                // 检查字符字面量边界
-                if (!inComment && !inString && !inRawString && c == '\'' && prev != '\\') {
-                    if (!inChar) {
-                        // 找到新的字符字面量开始
-                        break;
-                    }
-                    inChar = !inChar;
-                }
-
-                // 如果不在任何字面量或注释中，检查是否是有效的token开始
-                if (!inString && !inChar && !inComment && !inRawString) {
-                    if (scanner->isIdentifierStart(c) || isdigit(c) || c == '_' ||
-                        strchr("+-*/%<>=!&|^~.,:;()[]{}#", c)) {
-                        break;
-                    }
+                    currentPos++;  // 跳过第二个'/'
                 }
 
                 currentPos++;
@@ -264,6 +380,7 @@ namespace rp {
             // 确保至少前进了一个字符
             if (currentPos == startPos) {
                 currentPos++;
+                currentColumn++;
             }
         }
 

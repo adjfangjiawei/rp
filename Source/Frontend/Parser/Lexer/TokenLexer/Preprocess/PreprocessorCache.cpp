@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <unordered_set>
 
 namespace rp {
     namespace frontend {

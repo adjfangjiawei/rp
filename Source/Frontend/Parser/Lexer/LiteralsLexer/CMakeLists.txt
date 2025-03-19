@@ -13,6 +13,9 @@ add_library(LexerLiterals
     ${CMAKE_CURRENT_SOURCE_DIR}/NumberLiteralLexer/Integer/IntegerLiteralLexer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/NumberLiteralLexer/Octal/OctalLiteralLexer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/NumberLiteralLexer/Suffix/SuffixProcessor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/StringLiteralLexer/StringLiteralUtils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/StringLiteralLexer/RawStringProcessor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/StringLiteralLexer/EscapeSequenceProcessor.cpp
 )
 
 # Set include directories for this target
