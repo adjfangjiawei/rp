@@ -14,7 +14,7 @@ namespace rp {
                                                     std::string &error) {
             long long result = 0;
             bool hasDigits = false;
-            bool lastWasSeparator = true;  // 不允许数字开头就是分隔符
+            bool lastWasSeparator = false;  // 初始化为 false，因为还没有遇到分隔符
             bool hasDigitsAfterSeparator = false;
 
             while (pos < input.length()) {

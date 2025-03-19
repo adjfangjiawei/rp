@@ -17,7 +17,7 @@ namespace rp {
             // 默认构造函数，用于测试
             Lexer();
             // 带诊断引擎的构造函数
-            explicit Lexer(DiagnosticEngine* diagEngine);
+            explicit Lexer(std::shared_ptr<DiagnosticEngine> diagEngine);
 
             // 设置源代码
             void setSource(const char* src, size_t length, const std::string& filename);
@@ -42,7 +42,8 @@ namespace rp {
 
           protected:
             // 源代码信息
-            const char* source;
+            std::string sourceBuffer;  // 存储源代码的副本
+            const char* source;        // 指向sourceBuffer的指针
             size_t sourceLength;
             std::string filename;
 
@@ -63,6 +64,8 @@ namespace rp {
           protected:
             // 获取诊断引擎
             DiagnosticEngine* getDiagnostics() const { return diagnostics.get(); }
+            Token createToken(TokenKind kind, const std::string& text = "", bool consumeToken = true);
+            void saveTokenStart();
 
           private:
             // 组件
@@ -71,8 +74,7 @@ namespace rp {
 
             // 辅助函数
             void skipWhitespaceAndComments();
-            Token createToken(TokenKind kind, const std::string& text = "", bool consumeToken = true);
-            void saveTokenStart();
+
             void restoreToTokenStart();
             void updatePositionFromScanner();
 

@@ -13,8 +13,8 @@ void printToken(const Token& token) {
 }
 
 int main() {
-    DiagnosticEngine diagEngine;
-    Lexer lexer(&diagEngine);
+    auto diagEngine = std::make_shared<DiagnosticEngine>();
+    Lexer lexer(diagEngine);
 
     // 测试各种数字字面量
     const char* testCode = R"(

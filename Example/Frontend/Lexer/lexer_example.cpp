@@ -14,10 +14,10 @@ void printToken(const Token& token) {
 
 int main() {
     // 创建诊断引擎
-    DiagnosticEngine diagEngine;
+    auto diagEngine = std::make_shared<DiagnosticEngine>();
 
     // 创建词法分析器
-    Lexer lexer(&diagEngine);
+    Lexer lexer(diagEngine);
 
     // 测试代码
     const char* testCode = R"(

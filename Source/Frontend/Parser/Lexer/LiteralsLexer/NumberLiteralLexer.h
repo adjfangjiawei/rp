@@ -11,7 +11,7 @@ namespace rp {
 
         class NumberLiteralLexer {
           public:
-            explicit NumberLiteralLexer(DiagnosticEngine *diagnostics) : diagnostics(diagnostics) {}
+            explicit NumberLiteralLexer(std::shared_ptr<DiagnosticEngine> diagnostics) : diagnostics(diagnostics) {}
 
             // 设置源代码信息
             void setSource(const char *src, size_t length, const std::string &file) {
@@ -32,7 +32,7 @@ namespace rp {
             const char *source = nullptr;
             size_t sourceLength = 0;
             std::string filename;
-            DiagnosticEngine *diagnostics;
+            std::shared_ptr<DiagnosticEngine> diagnostics;
 
             // 处理所有类型的数字字面量
             bool processNumberLiteral(const std::string &input, size_t &pos, NumberValue &value, std::string &error);

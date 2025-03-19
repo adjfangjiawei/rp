@@ -47,121 +47,156 @@ namespace rp {
                 }
             }
 
-            // 处理整数部分
-            if (!processIntegerPart(input, pos, numStr, hasDigits, lastWasSeparator, hasDigitsAfterSeparator, error)) {
-                return false;
-            }
-
-            // 处理小数点和小数部分
+            // 处理整数部分或直接处理小数点
             if (pos < input.length() && input[pos] == '.') {
-                if (lastWasSeparator) {
-                    error = "Number separator cannot appear before decimal point";
-                    return false;
-                }
-
                 numStr += input[pos++];
-                lastWasSeparator = false;
-
                 if (!processDecimalPart(input, pos, numStr, lastWasSeparator, hasDigitsAfterSeparator, error)) {
                     return false;
                 }
-            }
-
-            // 处理指数部分
-            if (pos < input.length()) {
-                char expChar = input[pos];
-                if ((!isHexFloat && (expChar == 'e' || expChar == 'E')) ||
-                    (isHexFloat && (expChar == 'p' || expChar == 'P'))) {
+                hasDigits = true;  // 如果小数部分有效，整个数字就是有效的
+            } else {
+                if (!processIntegerPart(
+                        input, pos, numStr, hasDigits, lastWasSeparator, hasDigitsAfterSeparator, error)) {
+                    return false;
+                }
+                // 处理小数点和小数部分
+                if (pos < input.length() && input[pos] == '.') {
                     if (lastWasSeparator) {
-                        error = "Number separator cannot appear before exponent";
+                        error = "Number separator cannot appear before decimal point";
                         return false;
                     }
 
-                    if (!processExponentPart(input, pos, numStr, lastWasSeparator, hasDigitsAfterSeparator, error)) {
+                    numStr += input[pos++];
+                    lastWasSeparator = false;
+
+                    if (!processDecimalPart(input, pos, numStr, lastWasSeparator, hasDigitsAfterSeparator, error)) {
                         return false;
                     }
                 }
-            }
 
-            if (!hasDigits) {
-                error = "Expected digits in floating literal";
-                return false;
-            }
+                // 处理指数部分
+                if (pos < input.length()) {
+                    char expChar = input[pos];
+                    if ((!isHexFloat && (expChar == 'e' || expChar == 'E')) ||
+                        (isHexFloat && (expChar == 'p' || expChar == 'P'))) {
+                        if (lastWasSeparator) {
+                            error = "Number separator cannot appear before exponent";
+                            return false;
+                        }
 
-            // 处理后缀
-            if (!SuffixProcessor::processSuffix(input, pos, value, error)) {
-                return false;
-            }
-
-            value.kind = NumberKind::FloatingPoint;
-
-            try {
-                // 使用高精度转换
-                std::istringstream iss(numStr);
-                if (isHexFloat) {
-                    // 十六进制浮点数需要特殊处理
-                    unsigned long long intPart = 0;
-                    double fracPart = 0.0;
-                    int exponent = 0;
-
-                    // 解析十六进制字符串
-                    size_t pointPos = numStr.find('.');
-                    size_t expPos = numStr.find_first_of("pP");
-
-                    // 处理整数部分
-                    std::string intStr = (pointPos != std::string::npos) ? numStr.substr(2, pointPos - 2)
-                                         : (expPos != std::string::npos) ? numStr.substr(2, expPos - 2)
-                                                                         : numStr.substr(2);
-
-                    if (!intStr.empty()) {
-                        intPart = std::stoull(intStr, nullptr, 16);
-                    }
-
-                    // 处理小数部分
-                    if (pointPos != std::string::npos) {
-                        std::string fracStr = (expPos != std::string::npos)
-                                                  ? numStr.substr(pointPos + 1, expPos - pointPos - 1)
-                                                  : numStr.substr(pointPos + 1);
-
-                        if (!fracStr.empty()) {
-                            double scale = 1.0;
-                            for (char c : fracStr) {
-                                scale *= 16.0;
-                                fracPart += (std::isdigit(c) ? c - '0' : std::tolower(c) - 'a' + 10) / scale;
-                            }
+                        if (!processExponentPart(
+                                input, pos, numStr, lastWasSeparator, hasDigitsAfterSeparator, error)) {
+                            return false;
                         }
                     }
-
-                    // 处理指数部分
-                    if (expPos != std::string::npos) {
-                        std::string expStr = numStr.substr(expPos + 1);
-                        exponent = std::stoi(expStr);
-                    }
-
-                    // 计算最终值
-                    double result = (intPart + fracPart) * std::pow(2.0, exponent);
-
-                    if (!validateFloatRange(result, value.isFloat, error)) {
-                        return false;
-                    }
-                    value.value = result;
-                } else {
-                    // 普通浮点数转换
-                    double result;
-                    iss >> std::setprecision(std::numeric_limits<double>::max_digits10) >> result;
-
-                    if (!validateFloatRange(result, value.isFloat, error)) {
-                        return false;
-                    }
-                    value.value = result;
                 }
-                return true;
-            } catch (const std::out_of_range &) {
-                error = "Floating point literal is out of range";
-                return false;
-            } catch (const std::invalid_argument &) {
-                error = "Invalid floating point literal format";
-                return false;
+
+                if (!hasDigits) {
+                    error = "Expected digits in floating literal";
+                    return false;
+                }
+
+                // 处理后缀
+                if (!SuffixProcessor::processSuffix(input, pos, value, error)) {
+                    return false;
+                }
+
+                value.kind = NumberKind::FloatingPoint;
+
+                try {
+                    // 使用高精度转换
+                    std::istringstream iss(numStr);
+                    if (isHexFloat) {
+                        // 十六进制浮点数需要特殊处理
+                        unsigned long long intPart = 0;
+                        double fracPart = 0.0;
+                        int exponent = 0;
+
+                        // 解析十六进制字符串
+                        size_t pointPos = numStr.find('.');
+                        size_t expPos = numStr.find_first_of("pP");
+
+                        // 处理整数部分
+                        std::string intStr;
+                        if (pointPos != std::string::npos) {
+                            intStr = numStr.substr(2, pointPos - 2);
+                        } else if (expPos != std::string::npos) {
+                            intStr = numStr.substr(2, expPos - 2);
+                        } else {
+                            intStr = numStr.substr(2);
+                        }
+
+                        if (!intStr.empty()) {
+                            try {
+                                intPart = std::stoull(intStr, nullptr, 16);
+                            } catch (...) {
+                                error = "Invalid hexadecimal integer part";
+                                return false;
+                            }
+                        }
+
+                        // 处理小数部分
+                        if (pointPos != std::string::npos) {
+                            std::string fracStr;
+                            if (expPos != std::string::npos) {
+                                fracStr = numStr.substr(pointPos + 1, expPos - pointPos - 1);
+                            } else {
+                                fracStr = numStr.substr(pointPos + 1);
+                            }
+
+                            if (!fracStr.empty()) {
+                                double scale = 1.0;
+                                for (char c : fracStr) {
+                                    if (isNumberSeparator(c)) continue;
+                                    scale *= 16.0;
+                                    int digit;
+                                    if (std::isdigit(c)) {
+                                        digit = c - '0';
+                                    } else {
+                                        c = std::tolower(c);
+                                        if (c >= 'a' && c <= 'f') {
+                                            digit = c - 'a' + 10;
+                                        } else {
+                                            error = "Invalid hexadecimal digit in fraction";
+                                            return false;
+                                        }
+                                    }
+                                    fracPart += digit / scale;
+                                }
+                            }
+                        }
+
+                        // 处理指数部分
+                        if (expPos != std::string::npos) {
+                            std::string expStr = numStr.substr(expPos + 1);
+                            exponent = std::stoi(expStr);
+                        }
+
+                        // 计算最终值
+                        double result = (intPart + fracPart) * std::pow(2.0, exponent);
+
+                        if (!validateFloatRange(result, value.isFloat, error)) {
+                            return false;
+                        }
+                        value.value = result;
+                    } else {
+                        // 普通浮点数转换
+                        double result;
+                        iss >> std::setprecision(std::numeric_limits<double>::max_digits10) >> result;
+
+                        if (!validateFloatRange(result, value.isFloat, error)) {
+                            return false;
+                        }
+                        value.value = result;
+                    }
+                    return true;
+                } catch (const std::out_of_range &) {
+                    error = "Floating point literal is out of range";
+                    return false;
+                } catch (const std::invalid_argument &) {
+                    error = "Invalid floating point literal format";
+                    return false;
+                }
             }
         }
 

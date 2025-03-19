@@ -1,4 +1,3 @@
-
 #include "Frontend/Parser/Lexer/LiteralsLexer/CharacterLiteralLexer.h"
 
 #include <cctype>
@@ -16,6 +15,7 @@ namespace rp {
             // 初始化和基本检查
             if (input.empty()) {
                 error = "Empty input for character literal";
+                pos = 0;
                 return false;
             }
 
@@ -25,6 +25,7 @@ namespace rp {
             // 检查起始单引号
             if (pos >= inputLength || input[pos] != '\'') {
                 error = "Character literal must start with a single quote";
+                pos = startPos + 1;  // 确保至少前进一个位置
                 return false;
             }
             pos++;
@@ -32,12 +33,14 @@ namespace rp {
             // 检查空字符字面量
             if (pos >= inputLength) {
                 error = "Unexpected end of input after opening quote";
+                pos = startPos + 1;
                 return false;
             }
 
             // 检查直接结束的情况
             if (input[pos] == '\'') {
                 error = "Empty character literal";
+                pos = startPos + 2;  // 跳过两个引号
                 return false;
             }
 
@@ -47,7 +50,7 @@ namespace rp {
                 pos++;
                 if (pos >= inputLength) {
                     error = "Unexpected end of input after backslash";
-                    pos = startPos;
+                    pos = startPos + 2;
                     return false;
                 }
 
@@ -56,14 +59,14 @@ namespace rp {
 
                 if (!result.success) {
                     error = result.error;
-                    pos = startPos;
+                    pos = startPos + 2;
                     return false;
                 }
 
                 // 确保码点值在单个字符的范围内
                 if (result.codepoint > 0xFF) {
                     error = "Character literal value too large";
-                    pos = startPos;
+                    pos = startPos + result.consumed + 1;
                     return false;
                 }
 
@@ -74,7 +77,7 @@ namespace rp {
                 auto charResult = unicode::UnicodeProcessing::processCharacter(input, pos);
                 if (!charResult.success) {
                     error = charResult.error;
-                    pos = startPos;
+                    pos = startPos + 1;
                     return false;
                 }
 
@@ -85,7 +88,7 @@ namespace rp {
             // 检查结束单引号
             if (pos >= inputLength || input[pos] != '\'') {
                 error = "Character literal missing closing quote";
-                pos = startPos;
+                pos = startPos + 1;
                 return false;
             }
             pos++;  // 跳过结束引号

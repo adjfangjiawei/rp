@@ -5,6 +5,7 @@ add_library(LexerUnicode
     Processing/UnicodeProcessing.cpp
     Scanner/UTF8Scanner.cpp
     Escape/UnicodeEscape.cpp
+    Encoding/UnicodeEncoding.cpp
 )
 
 target_include_directories(LexerUnicode

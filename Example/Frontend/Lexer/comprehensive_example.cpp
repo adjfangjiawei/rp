@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <iomanip>
@@ -165,8 +166,8 @@ void runPerformanceTest(Lexer& lexer) {
 }
 
 int main() {
-    DiagnosticEngine diagEngine;
-    Lexer lexer(&diagEngine);
+    auto diagEngine = std::make_shared<DiagnosticEngine>();
+    Lexer lexer(diagEngine);
 
     // 运行各种测试
     runOperatorTest(lexer);

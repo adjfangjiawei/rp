@@ -15,8 +15,8 @@ void printToken(const Token& token) {
 }
 
 int main() {
-    DiagnosticEngine diagEngine;
-    Lexer lexer(&diagEngine);
+    auto diagEngine = std::make_shared<DiagnosticEngine>();
+    Lexer lexer(diagEngine);
 
     // 测试各种标识符和关键字
     const char* testCode = R"(

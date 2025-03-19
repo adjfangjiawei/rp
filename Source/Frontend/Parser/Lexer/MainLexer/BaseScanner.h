@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include <memory>
@@ -12,7 +11,7 @@ namespace rp {
 
         class BaseScanner {
           public:
-            BaseScanner(DiagnosticEngine* diagEngine);
+            BaseScanner(std::shared_ptr<DiagnosticEngine> diagEngine);
             virtual ~BaseScanner() = default;
 
             // 基础源代码管理
@@ -25,7 +24,7 @@ namespace rp {
             void setPosition(size_t pos, size_t line, size_t column);
 
           protected:
-            const char* source;
+            const char* source;  // 指向Lexer管理的源代码副本
             size_t sourceLength;
             std::string filename;
 
@@ -37,6 +36,14 @@ namespace rp {
 
             // Token创建辅助函数
             Token createToken(TokenKind kind, const std::string& text = "", size_t startPos = 0);
+
+            // 安全的字符访问
+            char getCurrentChar() const { return (currentPos < sourceLength) ? source[currentPos] : '\0'; }
+
+            char peekChar(size_t offset = 1) const {
+                size_t pos = currentPos + offset;
+                return (pos < sourceLength) ? source[pos] : '\0';
+            }
         };
 
     }  // namespace frontend

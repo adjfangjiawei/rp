@@ -11,7 +11,7 @@ namespace rp {
 
         class Scanner {
           public:
-            Scanner(DiagnosticEngine* diagEngine);
+            Scanner(std::shared_ptr<DiagnosticEngine> diagEngine);
 
             void setSource(const char* src, size_t length, const std::string& filename);
 
@@ -38,6 +38,8 @@ namespace rp {
           private:
             IdentifierScanner identifierScanner;
             OperatorScanner operatorScanner;
+            const char* source{nullptr};
+            size_t sourceLength{0};
 
             // 同步扫描器位置
             void syncScannerPositions();

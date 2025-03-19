@@ -1,4 +1,3 @@
-
 #include "Frontend/Parser/Lexer/LiteralsLexer/StringLiteralLexer.h"
 
 #include <cctype>
@@ -21,75 +20,161 @@ namespace rp {
             size_t pos = 1;  // 跳过开始的双引号
             output.clear();
             const size_t inputLength = input.length();
-            bool isMultiline = false;
 
-            // 检查是否是多行字符串
-            if (pos + 1 < inputLength && input[pos] == '"' && input[pos + 1] == '"') {
-                isMultiline = true;
-                pos += 2;
-                // 如果多行字符串开始后直接是换行，跳过第一个换行
-                if (pos < inputLength && input[pos] == '\n') {
-                    pos++;
-                } else if (pos + 1 < inputLength && input[pos] == '\r' && input[pos + 1] == '\n') {
-                    pos += 2;
-                }
-            }
+            // 添加最大字符串长度限制，防止无限循环
+            const size_t MAX_STRING_LENGTH = 1024 * 1024;  // 1MB
+            size_t currentLength = 0;
 
             while (pos < inputLength) {
+                if (currentLength > MAX_STRING_LENGTH) {
+                    error = "String literal too long (maximum length is 1MB)";
+                    return false;
+                }
+
                 char c = input[pos];
 
                 if (c == '"') {
-                    if (isMultiline) {
-                        // 检查是否是多行字符串的结束 """
-                        if (pos + 2 < inputLength && input[pos + 1] == '"' && input[pos + 2] == '"') {
-                            consumed = pos + 3;
-                            return true;
-                        }
-                        output += c;
-                        pos++;
-                    } else {
-                        // 普通字符串结束
-                        consumed = pos + 1;
-                        return true;
-                    }
+                    // 字符串结束
+                    consumed = pos + 1;
+                    return true;
                 } else if (c == '\\') {
                     // 处理转义序列
-                    std::string_view remaining(input.data() + pos, input.length() - pos);
-
-                    if (isMultiline) {
-                        // 处理行连续
-                        auto lineContResult = unicode::UnicodeEscape::processLineContinuation(std::string(remaining));
-                        if (lineContResult.success) {
-                            pos += lineContResult.consumed;
-                            continue;
-                        }
+                    if (pos + 1 >= inputLength) {
+                        error = "Incomplete escape sequence";
+                        return false;
                     }
 
-                    auto result = unicode::UnicodeEscape::parseEscapeSequence(std::string(remaining), 0);
+                    pos++;  // 移动到转义字符
+                    char escaped = input[pos];
+
+                    switch (escaped) {
+                        case 'n':
+                            output += '\n';
+                            break;
+                        case 't':
+                            output += '\t';
+                            break;
+                        case 'r':
+                            output += '\r';
+                            break;
+                        case '\\':
+                            output += '\\';
+                            break;
+                        case '"':
+                            output += '"';
+                            break;
+                        case '\'':
+                            output += '\'';
+                            break;
+                        case '0':
+                        case '1':
+                        case '2':
+                        case '3':
+                        case '4':
+                        case '5':
+                        case '6':
+                        case '7':
+                            {
+                                // 处理八进制转义序列
+                                size_t octLen = 1;
+                                char value = escaped - '0';
+
+                                // 最多读取3位八进制数
+                                while (octLen < 3 && pos + 1 < inputLength) {
+                                    char next = input[pos + 1];
+                                    if (next >= '0' && next <= '7') {
+                                        value = (value << 3) | (next - '0');
+                                        pos++;
+                                        octLen++;
+                                    } else {
+                                        break;
+                                    }
+                                }
+                                output += value;
+                                break;
+                            }
+                        case 'x':
+                            {
+                                // 处理十六进制转义序列
+                                if (pos + 2 >= inputLength) {
+                                    error = "Incomplete hex escape sequence";
+                                    return false;
+                                }
+
+                                // 验证接下来的两个字符是否都是有效的十六进制数字
+                                char hex1 = input[pos + 1];
+                                char hex2 = input[pos + 2];
+                                if (!std::isxdigit(hex1) || !std::isxdigit(hex2)) {
+                                    error = "Invalid hex escape sequence: \\x" + std::string(1, hex1) +
+                                            std::string(1, hex2);
+                                    return false;
+                                }
+
+                                try {
+                                    std::string hex = input.substr(pos + 1, 2);
+                                    int value = std::stoi(hex, nullptr, 16);
+                                    output += static_cast<char>(value);
+                                    pos += 2;
+                                } catch (const std::exception &e) {
+                                    error = "Invalid hex escape sequence";
+                                    return false;
+                                }
+                                break;
+                            }
+                        case 'u':
+                        case 'U':
+                            {
+                                // 处理Unicode转义序列
+                                bool isLongForm = (escaped == 'U');
+                                if (pos + (isLongForm ? 8 : 4) >= inputLength) {
+                                    error = std::string("Incomplete Unicode escape sequence: \\") + escaped;
+                                    return false;
+                                }
+
+                                try {
+                                    auto result = unicode::UnicodeEscape::parseEscapeSequence(input, pos - 1);
+                                    if (!result.success) {
+                                        error = result.error;
+                                        return false;
+                                    }
+
+                                    // 验证码点范围
+                                    if (result.codepoint > 0x10FFFF) {
+                                        error = "Unicode code point out of range";
+                                        return false;
+                                    }
+
+                                    output += unicode::UnicodeEncoding::codePointToUtf8(result.codepoint);
+                                    pos += result.consumed - 1;
+                                } catch (const std::exception &e) {
+                                    error = std::string("Invalid Unicode escape sequence: ") + e.what();
+                                    return false;
+                                }
+                                break;
+                            }
+                        default:
+                            error = "Invalid escape sequence: \\" + std::string(1, escaped);
+                            return false;
+                    }
+                } else if (c == '\n' || c == '\r') {
+                    error = "Unterminated string literal: new line in string literal";
+                    return false;
+                } else if (static_cast<unsigned char>(c) < 0x20) {
+                    // 检查不可打印的控制字符
+                    error = "Invalid control character in string literal";
+                    return false;
+                } else {
+                    // 处理普通字符或UTF-8序列
+                    currentLength++;
+                    auto result = unicode::UnicodeProcessing::processUtf8Character(input, pos);
                     if (!result.success) {
                         error = result.error;
                         return false;
                     }
-
-                    // 将码点转换为UTF-8字符串
-                    output += unicode::UnicodeProcessing::processUtf8String(
-                                  std::string(1, static_cast<char>(result.codepoint)), 0, 1)
-                                  .value;
-                    pos += result.consumed;
-                } else if (!isMultiline && (c == '\n' || c == '\r')) {
-                    error = "Unterminated string literal";
-                    return false;
-                } else {
-                    // 处理普通字符或UTF-8序列
-                    auto charResult = unicode::UnicodeProcessing::processUtf8Character(input, pos);
-                    if (!charResult.success) {
-                        error = charResult.error;
-                        return false;
-                    }
-
-                    output += input.substr(pos, charResult.consumed);
-                    pos += charResult.consumed;
+                    output += input.substr(pos, result.consumed);
+                    pos += result.consumed - 1;
                 }
+                pos++;
             }
 
             error = "Unterminated string literal";
@@ -113,7 +198,6 @@ namespace rp {
             std::string delimiter;
             while (pos < inputLength && input[pos] != '(') {
                 char c = input[pos];
-                // 分隔符只能包含: [a-zA-Z0-9_]
                 if (!std::isalnum(c) && c != '_') {
                     error = "Invalid character in raw string delimiter";
                     return false;
@@ -132,27 +216,44 @@ namespace rp {
             }
             pos++;  // 跳过'('
 
+            // 添加最大字符串长度限制
+            const size_t MAX_RAW_STRING_LENGTH = 1024 * 1024;  // 1MB
+
             // 查找结束序列 )delimiter"
             std::string endSequence = ")" + delimiter + "\"";
             size_t contentStart = pos;
             size_t contentEnd = input.find(endSequence, contentStart);
 
             if (contentEnd == std::string::npos) {
-                error = "Unterminated raw string literal";
+                error = "Unterminated raw string literal: missing )" + delimiter + "\"";
                 return false;
+            }
+
+            // 检查字符串长度
+            size_t contentLength = contentEnd - contentStart;
+            if (contentLength > MAX_RAW_STRING_LENGTH) {
+                error = "Raw string literal too long (maximum length is 1MB)";
+                return false;
+            }
+
+            // 检查字符串内容中是否有非法字符
+            for (size_t i = contentStart; i < contentEnd; ++i) {
+                if (static_cast<unsigned char>(input[i]) < 0x20 && input[i] != '\n' && input[i] != '\r' &&
+                    input[i] != '\t') {
+                    error = "Invalid control character in raw string literal";
+                    return false;
+                }
             }
 
             // 提取原始字符串内容
-            size_t contentLength = contentEnd - contentStart;
-            auto result = unicode::UnicodeProcessing::processUtf8String(input, contentStart, contentLength);
+            output = input.substr(contentStart, contentLength);
+            consumed = contentEnd + endSequence.length();
 
-            if (!result.success) {
-                error = result.error;
+            // 验证UTF-8编码
+            if (!unicode::UnicodeProcessing::validateUtf8String(output, error)) {
                 return false;
             }
 
-            output = std::move(result.value);
-            consumed = contentEnd + endSequence.length();
             return true;
         }
 
@@ -161,15 +262,8 @@ namespace rp {
                 return true;  // 空字符串是合法的
             }
 
-            // 对于原始字符串字面量，只需要验证UTF-8编码
-            if (str.length() >= 2 && str[0] == 'R' && str[1] == '"') {
-                return unicode::UnicodeProcessing::validateUtf8String(str, error);
-            }
-
-            // 对于普通字符串字面量，需要验证转义序列
-            // 验证字符串是否是有效的UTF-8，并且所有转义序列都是合法的
-            return unicode::UnicodeProcessing::validateUtf8String(str, error) &&
-                   unicode::UnicodeEscape::validateEscapeSequence(str, error);
+            // 验证字符串是否是有效的UTF-8
+            return unicode::UnicodeProcessing::validateUtf8String(str, error);
         }
 
     }  // namespace frontend

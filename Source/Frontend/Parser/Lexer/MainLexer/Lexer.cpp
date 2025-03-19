@@ -78,7 +78,7 @@ namespace rp {
 
                 // 数字
                 if (isdigit(c) || (c == '.' && currentPos + 1 < sourceLength && isdigit(source[currentPos + 1]))) {
-                    NumberLiteralLexer numberLexer(diagnostics.get());
+                    NumberLiteralLexer numberLexer(this->diagnostics);
                     numberLexer.setSource(source, sourceLength, filename);
                     numberLexer.currentPos = currentPos;
                     numberLexer.currentLine = currentLine;
@@ -92,7 +92,7 @@ namespace rp {
 
                 // 字符字面量
                 if (c == '\'') {
-                    CharacterLiteralLexer charLexer(diagnostics.get());
+                    CharacterLiteralLexer charLexer(this->diagnostics);
                     charLexer.setSource(source, sourceLength, filename);
                     charLexer.currentPos = currentPos;
                     charLexer.currentLine = currentLine;
@@ -111,7 +111,7 @@ namespace rp {
                     (c == 'u' && currentPos + 1 < sourceLength && source[currentPos + 1] == '8' &&
                      currentPos + 2 < sourceLength && source[currentPos + 2] == '"') ||
                     (c == 'R' && currentPos + 1 < sourceLength && source[currentPos + 1] == '"')) {
-                    StringLiteralLexer stringLexer(diagnostics.get());
+                    StringLiteralLexer stringLexer(this->diagnostics);
                     stringLexer.setSource(source, sourceLength, filename);
                     stringLexer.currentPos = currentPos;
                     stringLexer.currentLine = currentLine;
@@ -155,28 +155,115 @@ namespace rp {
         }
 
         void Lexer::recoverFromError() {
-            // 简单的错误恢复：跳过直到找到下一个有效的token开始字符
+            // 增强的错误恢复：跳过直到找到下一个明确的token边界
+            bool inString = false;
+            bool inChar = false;
+            bool inComment = false;
+            bool inRawString = false;
+            std::string rawDelimiter;
+            size_t startPos = currentPos;
+
             while (currentPos < sourceLength) {
                 char c = source[currentPos];
-                if (isspace(c)) {
-                    if (c == '\n') {
-                        currentLine++;
-                        currentColumn = 1;
-                    } else {
-                        currentColumn++;
+                char next = (currentPos + 1 < sourceLength) ? source[currentPos + 1] : '\0';
+                char prev = (currentPos > 0) ? source[currentPos - 1] : '\0';
+
+                // 处理换行
+                if (c == '\n') {
+                    currentLine++;
+                    currentColumn = 1;
+                    // 换行会终止单行注释和未终止的普通字符串/字符字面量
+                    // 但不会终止原始字符串
+                    inComment = false;
+                    if (!inRawString) {
+                        inString = false;
+                        inChar = false;
                     }
-                    currentPos++;
+                } else {
+                    currentColumn++;
+                }
+
+                // 检查注释
+                if (!inString && !inChar && !inRawString && c == '/' && next == '/') {
+                    inComment = true;
+                }
+
+                // 检查原始字符串
+                if (!inString && !inChar && !inComment && c == 'R' && next == '"') {
+                    inRawString = true;
+                    currentPos += 2;  // 跳过R"
+                    // 读取分隔符
+                    size_t delimStart = currentPos;
+                    while (currentPos < sourceLength && source[currentPos] != '(') {
+                        if (source[currentPos] == '\n') {
+                            inRawString = false;
+                            break;
+                        }
+                        rawDelimiter += source[currentPos];
+                        currentPos++;
+                    }
+                    if (inRawString && currentPos < sourceLength && source[currentPos] == '(') {
+                        currentPos++;  // 跳过(
+                    } else {
+                        inRawString = false;
+                        rawDelimiter.clear();
+                        currentPos = delimStart;
+                    }
                     continue;
                 }
 
-                // 检查是否是可能的token开始
-                if (scanner->isIdentifierStart(c) || isdigit(c) || c == '"' || c == '\'' || c == '_' ||
-                    strchr("+-*/%<>=!&|^~.,:;()[]{}#", c)) {
-                    break;
+                // 检查原始字符串的结束
+                if (inRawString && c == ')') {
+                    size_t endPos = currentPos + 1;
+                    bool foundEnd = true;
+                    // 检查分隔符
+                    for (char delimChar : rawDelimiter) {
+                        if (endPos >= sourceLength || source[endPos] != delimChar) {
+                            foundEnd = false;
+                            break;
+                        }
+                        endPos++;
+                    }
+                    if (foundEnd && endPos < sourceLength && source[endPos] == '"') {
+                        currentPos = endPos + 1;  // 跳过结束引号
+                        inRawString = false;
+                        rawDelimiter.clear();
+                        break;  // 找到有效的token边界
+                    }
+                }
+
+                // 检查普通字符串边界
+                if (!inComment && !inChar && !inRawString && c == '"' && prev != '\\') {
+                    if (!inString) {
+                        // 找到新的字符串开始
+                        break;
+                    }
+                    inString = !inString;
+                }
+
+                // 检查字符字面量边界
+                if (!inComment && !inString && !inRawString && c == '\'' && prev != '\\') {
+                    if (!inChar) {
+                        // 找到新的字符字面量开始
+                        break;
+                    }
+                    inChar = !inChar;
+                }
+
+                // 如果不在任何字面量或注释中，检查是否是有效的token开始
+                if (!inString && !inChar && !inComment && !inRawString) {
+                    if (scanner->isIdentifierStart(c) || isdigit(c) || c == '_' ||
+                        strchr("+-*/%<>=!&|^~.,:;()[]{}#", c)) {
+                        break;
+                    }
                 }
 
                 currentPos++;
-                currentColumn++;
+            }
+
+            // 确保至少前进了一个字符
+            if (currentPos == startPos) {
+                currentPos++;
             }
         }
 

@@ -1,43 +1,77 @@
-
 #include "OperatorScanner.h"
 
 namespace rp {
     namespace frontend {
 
         Token OperatorScanner::scanOperatorOrPunctuation() {
+            if (currentPos >= sourceLength) {
+                return createToken(TokenKind::EndOfFile);
+            }
+
             char c = source[currentPos];
-            currentPos++;
-            currentColumn++;
+            size_t startPos = currentPos;
+            size_t startColumn = currentColumn;
 
             // 先处理单字符运算符和标点符号
             Token singleCharResult = handleSingleCharOperator(c);
             if (singleCharResult.kind != TokenKind::Invalid) {
+                currentPos++;
+                currentColumn++;
                 return singleCharResult;
             }
 
             // 处理双字符和三字符运算符
-            if (currentPos < sourceLength) {
-                char next = source[currentPos];
+            if (currentPos + 1 < sourceLength) {
+                char next = source[currentPos + 1];
                 Token doubleCharResult = handleDoubleCharOperator(c, next);
                 if (doubleCharResult.kind != TokenKind::Invalid) {
+                    currentPos += 2;
+                    currentColumn += 2;
                     return doubleCharResult;
                 }
 
                 // 处理三字符运算符
-                if (currentPos + 1 < sourceLength) {
-                    char third = source[currentPos + 1];
+                if (currentPos + 2 < sourceLength) {
+                    char third = source[currentPos + 2];
                     Token tripleCharResult = handleTripleCharOperator(c, next, third);
                     if (tripleCharResult.kind != TokenKind::Invalid) {
+                        currentPos += 3;
+                        currentColumn += 3;
                         return tripleCharResult;
                     }
                 }
             }
 
-            // 如果没有匹配到任何有效的运算符，返回无效token
+            // 如果没有匹配到任何有效的运算符，向前移动并报告错误
+            currentPos = startPos + 1;  // 前进一个字符
+            if (c == '\n') {
+                currentLine++;
+                currentColumn = 1;
+            } else {
+                currentColumn = startColumn + 1;
+            }
+
+            // 跳过连续的无效字符
+            while (currentPos < sourceLength) {
+                char next = source[currentPos];
+                if (handleSingleCharOperator(next).kind != TokenKind::Invalid || std::isalnum(next) || next == '_' ||
+                    next == '"' || next == '\'' || std::isspace(next)) {
+                    break;
+                }
+                currentPos++;
+                if (next == '\n') {
+                    currentLine++;
+                    currentColumn = 1;
+                } else {
+                    currentColumn++;
+                }
+            }
+
             diagnostics->report(
                 DiagnosticLevel::Error,
-                {filename, static_cast<unsigned int>(currentLine), static_cast<unsigned int>(currentColumn)},
-                "Invalid operator or punctuation");
+                {filename, static_cast<unsigned int>(currentLine), static_cast<unsigned int>(startColumn)},
+                "Invalid operator or punctuation: '" + std::string(1, c) + "'");
+
             return createToken(TokenKind::Invalid);
         }
 
@@ -93,144 +127,61 @@ namespace rp {
                     return createToken(TokenKind::Colon);
                 case '#':
                     return createToken(TokenKind::Hash);
+                default:
+                    return createToken(TokenKind::Invalid);
             }
-            return createToken(TokenKind::Invalid);
         }
 
         Token OperatorScanner::handleDoubleCharOperator(char first, char second) {
             switch (first) {
                 case '+':
-                    if (second == '+') {
-                        currentPos++;
-                        currentColumn++;
-                        return createToken(TokenKind::PlusPlus);
-                    }
-                    if (second == '=') {
-                        currentPos++;
-                        currentColumn++;
-                        return createToken(TokenKind::PlusEqual);
-                    }
+                    if (second == '+') return createToken(TokenKind::PlusPlus);
+                    if (second == '=') return createToken(TokenKind::PlusEqual);
                     break;
                 case '-':
-                    if (second == '-') {
-                        currentPos++;
-                        currentColumn++;
-                        return createToken(TokenKind::MinusMinus);
-                    }
-                    if (second == '=') {
-                        currentPos++;
-                        currentColumn++;
-                        return createToken(TokenKind::MinusEqual);
-                    }
-                    if (second == '>') {
-                        currentPos++;
-                        currentColumn++;
-                        return createToken(TokenKind::Arrow);
-                    }
+                    if (second == '-') return createToken(TokenKind::MinusMinus);
+                    if (second == '=') return createToken(TokenKind::MinusEqual);
+                    if (second == '>') return createToken(TokenKind::Arrow);
                     break;
                 case '*':
-                    if (second == '=') {
-                        currentPos++;
-                        currentColumn++;
-                        return createToken(TokenKind::StarEqual);
-                    }
+                    if (second == '=') return createToken(TokenKind::StarEqual);
                     break;
                 case '/':
-                    if (second == '=') {
-                        currentPos++;
-                        currentColumn++;
-                        return createToken(TokenKind::SlashEqual);
-                    }
+                    if (second == '=') return createToken(TokenKind::SlashEqual);
                     break;
                 case '%':
-                    if (second == '=') {
-                        currentPos++;
-                        currentColumn++;
-                        return createToken(TokenKind::PercentEqual);
-                    }
+                    if (second == '=') return createToken(TokenKind::PercentEqual);
                     break;
                 case '^':
-                    if (second == '=') {
-                        currentPos++;
-                        currentColumn++;
-                        return createToken(TokenKind::CaretEqual);
-                    }
+                    if (second == '=') return createToken(TokenKind::CaretEqual);
                     break;
                 case '&':
-                    if (second == '&') {
-                        currentPos++;
-                        currentColumn++;
-                        return createToken(TokenKind::AmpAmp);
-                    }
-                    if (second == '=') {
-                        currentPos++;
-                        currentColumn++;
-                        return createToken(TokenKind::AmpEqual);
-                    }
+                    if (second == '&') return createToken(TokenKind::AmpAmp);
+                    if (second == '=') return createToken(TokenKind::AmpEqual);
                     break;
                 case '|':
-                    if (second == '|') {
-                        currentPos++;
-                        currentColumn++;
-                        return createToken(TokenKind::PipePipe);
-                    }
-                    if (second == '=') {
-                        currentPos++;
-                        currentColumn++;
-                        return createToken(TokenKind::PipeEqual);
-                    }
+                    if (second == '|') return createToken(TokenKind::PipePipe);
+                    if (second == '=') return createToken(TokenKind::PipeEqual);
                     break;
                 case '<':
-                    if (second == '<') {
-                        currentPos++;
-                        currentColumn++;
-                        return createToken(TokenKind::LessLess);
-                    }
-                    if (second == '=') {
-                        currentPos++;
-                        currentColumn++;
-                        return createToken(TokenKind::LessEqual);
-                    }
+                    if (second == '<') return createToken(TokenKind::LessLess);
+                    if (second == '=') return createToken(TokenKind::LessEqual);
                     break;
                 case '>':
-                    if (second == '>') {
-                        currentPos++;
-                        currentColumn++;
-                        return createToken(TokenKind::GreaterGreater);
-                    }
-                    if (second == '=') {
-                        currentPos++;
-                        currentColumn++;
-                        return createToken(TokenKind::GreaterEqual);
-                    }
+                    if (second == '>') return createToken(TokenKind::GreaterGreater);
+                    if (second == '=') return createToken(TokenKind::GreaterEqual);
                     break;
                 case '=':
-                    if (second == '=') {
-                        currentPos++;
-                        currentColumn++;
-                        return createToken(TokenKind::EqualEqual);
-                    }
+                    if (second == '=') return createToken(TokenKind::EqualEqual);
                     break;
                 case '!':
-                    if (second == '=') {
-                        currentPos++;
-                        currentColumn++;
-                        return createToken(TokenKind::ExclaimEqual);
-                    }
+                    if (second == '=') return createToken(TokenKind::ExclaimEqual);
                     break;
                 case ':':
-                    if (second == ':') {
-                        currentPos++;
-                        currentColumn++;
-                        return createToken(TokenKind::ColonColon);
-                    }
+                    if (second == ':') return createToken(TokenKind::ColonColon);
                     break;
                 case '#':
-                    if (second == '#') {
-                        currentPos++;
-                        currentColumn++;
-                        return createToken(TokenKind::HashHash);
-                    }
+                    if (second == '#') return createToken(TokenKind::HashHash);
                     break;
             }
             return createToken(TokenKind::Invalid);
@@ -238,13 +189,9 @@ namespace rp {
 
         Token OperatorScanner::handleTripleCharOperator(char first, char second, char third) {
             if (first == '.' && second == '.' && third == '.') {
-                currentPos += 2;
-                currentColumn += 2;
                 return createToken(TokenKind::Ellipsis);
             }
             if (first == '<' && second == '<' && third == '<') {
-                currentPos += 2;
-                currentColumn += 2;
                 return createToken(TokenKind::LessLessLess);
             }
             return createToken(TokenKind::Invalid);

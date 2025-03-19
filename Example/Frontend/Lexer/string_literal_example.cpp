@@ -1,5 +1,6 @@
 #include <cstring>
 #include <iostream>
+#include <memory>
 #include <string>
 
 #include "Frontend/Diagnostic/Diagnostic.h"
@@ -13,12 +14,11 @@ void printToken(const Token& token) {
 }
 
 int main() {
-    DiagnosticEngine diagEngine;
-    Lexer lexer(&diagEngine);
+    auto diagEngine = std::make_shared<DiagnosticEngine>();
+    Lexer lexer(diagEngine);
 
     // 测试各种字符串字面量
-    const char* testCode =
-        u8R"(
+    const char* testCode = R"(
     // 基本字符串字面量
     "Hello, World!"
     ""  // 空字符串
@@ -44,21 +44,17 @@ int main() {
     No need to escape \n or \t
     Can span multiple lines)"
 
-        // 带分隔符的原始字符串
-        R"delim(This string has )delim inside)delim"
+                           // 带分隔符的原始字符串
+                           R"delim(This string has )delim inside)delim"
 
-        // 字符串连接
-        "Hello "
-        "World"  // 自动连接
-        "Multi-line "
-        "string "
-        "concatenation"
+                           // 字符串连接
+                           "Hello "
+                           "World"  // 自动连接
+                           "Multi-line "
+                           "string "
+                           "concatenation";
 
-        // 带前缀的字符串
-        u8"UTF-8 string";
-
-    lexer.setSource(
-        reinterpret_cast<const char*>(testCode), strlen(reinterpret_cast<const char*>(testCode)), "string_test.cpp");
+    lexer.setSource(testCode, strlen(testCode), "string_test.cpp");
 
     std::cout << "=== 字符串字面量测试 ===" << std::endl;
 

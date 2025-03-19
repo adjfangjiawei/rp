@@ -1,4 +1,3 @@
-
 #include "Frontend/Parser/Lexer/MainLexer/KeywordManager.h"
 #include "Frontend/Parser/Lexer/MainLexer/Lexer.h"
 
@@ -6,8 +5,7 @@ namespace rp {
     namespace frontend {
 
         Lexer::Lexer()
-            : source(nullptr),
-              currentPos(0),
+            : currentPos(0),
               currentLine(1),
               currentColumn(1),
               sourceLength(0),
@@ -15,26 +13,27 @@ namespace rp {
               tokenLine(1),
               tokenColumn(1) {
             diagnostics = std::make_shared<DiagnosticEngine>();
-            scanner = std::make_unique<Scanner>(diagnostics.get());
+            scanner = std::make_unique<Scanner>(diagnostics);
             KeywordManager::initialize();
         }
 
-        Lexer::Lexer(DiagnosticEngine* diagEngine)
-            : source(nullptr),
-              currentPos(0),
+        Lexer::Lexer(std::shared_ptr<DiagnosticEngine> diagEngine)
+            : currentPos(0),
               currentLine(1),
               currentColumn(1),
               sourceLength(0),
               tokenStart(0),
               tokenLine(1),
               tokenColumn(1) {
-            diagnostics = std::shared_ptr<DiagnosticEngine>(diagEngine);
-            scanner = std::make_unique<Scanner>(diagEngine);
+            diagnostics = diagEngine ? diagEngine : std::make_shared<DiagnosticEngine>();
+            scanner = std::make_unique<Scanner>(diagnostics);
             KeywordManager::initialize();
         }
 
         void Lexer::setSource(const char* src, size_t length, const std::string& filename) {
-            source = src;
+            // 创建源代码的副本
+            sourceBuffer = std::string(src, length);
+            source = sourceBuffer.c_str();  // 使用string内部的缓冲区
             sourceLength = length;
             this->filename = filename;
             currentPos = 0;
@@ -44,19 +43,24 @@ namespace rp {
             tokenLine = 1;
             tokenColumn = 1;
 
-            scanner->setSource(src, length, filename);
+            scanner->setSource(source, length, filename);
         }
 
         Token Lexer::createToken(TokenKind kind, const std::string& text, bool consumeToken) {
             Token token;
             token.kind = kind;
-            token.text = text;
             token.filename = filename;
             token.line = tokenLine;
             token.column = tokenColumn;
-            if (text.empty()) {
-                token.text = std::string_view(source + tokenStart, currentPos - tokenStart);
+
+            if (!text.empty()) {
+                token.setText(text);
+            } else {
+                // 从源代码中提取文本
+                std::string tokenText(source + tokenStart, currentPos - tokenStart);
+                token.setText(std::move(tokenText));
             }
+
             if (!consumeToken) {
                 restoreToTokenStart();
             }

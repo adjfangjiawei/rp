@@ -39,8 +39,8 @@ void runTest(const char* testCode, const char* testName, Lexer& lexer) {
 }
 
 int main() {
-    TestDiagnosticEngine diagEngine;
-    Lexer lexer(&diagEngine);
+    auto diagEngine = std::make_shared<TestDiagnosticEngine>();
+    Lexer lexer(diagEngine);
 
     // 1. 未终止的字符串和字符测试
     const char* unterminatedTest = R"(
