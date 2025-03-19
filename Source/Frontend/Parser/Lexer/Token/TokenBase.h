@@ -132,6 +132,12 @@ namespace rp {
             inline bool isKeyword() const;
             inline bool isOperator() const;
             inline bool isDelimiter() const;
+
+            // Getter methods
+            std::string_view getText() const { return text; }
+            TokenKind getKind() const { return kind; }
+            unsigned getLine() const { return line; }
+            unsigned getColumn() const { return column; }
         };
 
     }  // namespace frontend

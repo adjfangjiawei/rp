@@ -1,115 +1,44 @@
-
-#include "Frontend/Parser/Lexer/LiteralsLexer/CharacterLiteralLexer.h"
-#include "Frontend/Parser/Lexer/LiteralsLexer/NumberLiteralLexer.h"
-#include "Frontend/Parser/Lexer/LiteralsLexer/StringLiteralLexer.h"
 #include "Frontend/Parser/Lexer/MainLexer/Lexer.h"
 
 namespace rp {
     namespace frontend {
 
         Token Lexer::nextToken() {
-            // 跳过空白字符和注释
-            skipWhitespaceAndComments();
-
-            // 记录token的起始位置
-            saveTokenStart();
-
-            // 到达文件末尾
-            if (currentPos >= sourceLength) {
-                return createToken(TokenKind::EndOfFile);
-            }
-
-            char c = source[currentPos];
-
-            // 更新扫描器的位置
-            scanner->setPosition(currentPos, currentLine, currentColumn);
-
-            // 标识符或关键字
-            if (scanner->isIdentifierStart(c)) {
-                Token token = scanner->scanIdentifier();
-                updatePositionFromScanner();
+            if (!tokenCache.empty()) {
+                Token token = tokenCache.front();
+                tokenCache.pop_front();
                 return token;
             }
-
-            // 数字
-            if (isdigit(c) || (c == '.' && currentPos + 1 < sourceLength && isdigit(source[currentPos + 1]))) {
-                NumberLiteralLexer numberLexer(diagnostics.get());
-                numberLexer.setSource(source, sourceLength, filename);
-                numberLexer.currentPos = currentPos;
-                numberLexer.currentLine = currentLine;
-                numberLexer.currentColumn = currentColumn;
-                Token token = numberLexer.scan();
-                currentPos = numberLexer.currentPos;
-                currentLine = numberLexer.currentLine;
-                currentColumn = numberLexer.currentColumn;
-                return token;
-            }
-
-            // 字符字面量
-            if (c == '\'') {
-                CharacterLiteralLexer charLexer(diagnostics.get());
-                charLexer.setSource(source, sourceLength, filename);
-                charLexer.currentPos = currentPos;
-                charLexer.currentLine = currentLine;
-                currentColumn = charLexer.currentColumn;
-                Token token = charLexer.scan();
-                currentPos = charLexer.currentPos;
-                currentLine = charLexer.currentLine;
-                currentColumn = charLexer.currentColumn;
-                return token;
-            }
-
-            // 字符串字面量处理
-            if (c == '"' || (c == 'R' && currentPos + 1 < sourceLength && source[currentPos + 1] == '"')) {
-                // 检查是否是原始字符串字面量
-                bool isRawString = (c == 'R');
-                if (isRawString) {
-                    currentPos++;  // 跳过'R'
-                }
-
-                StringLiteralLexer stringLexer(diagnostics.get());
-                stringLexer.setSource(source, sourceLength, filename);
-                stringLexer.currentPos = currentPos;
-                stringLexer.currentLine = currentLine;
-                stringLexer.currentColumn = currentColumn;
-
-                Token token = stringLexer.scan();
-
-                // 更新位置信息
-                currentPos = stringLexer.currentPos;
-                currentLine = stringLexer.currentLine;
-                currentColumn = stringLexer.currentColumn;
-
-                return token;
-            }
-
-            // 运算符和标点符号
-            Token token = scanner->scanOperatorOrPunctuation();
-            updatePositionFromScanner();
-            return token;
+            return getNextTokenFromSource();
         }
 
-        Token Lexer::peekToken() {
-            // 保存当前状态
-            size_t savedPos = currentPos;
-            size_t savedLine = currentLine;
-            size_t savedColumn = currentColumn;
-            size_t savedTokenStart = tokenStart;
-            size_t savedTokenLine = tokenLine;
-            size_t savedTokenColumn = tokenColumn;
+        Token Lexer::peekToken() { return peekToken(1); }
 
-            // 获取下一个token
-            Token token = nextToken();
+        Token Lexer::peekToken(size_t n) {
+            if (n == 0) {
+                return Token();  // 返回一个无效token
+            }
 
-            // 恢复状态
-            currentPos = savedPos;
-            currentLine = savedLine;
-            currentColumn = savedColumn;
-            tokenStart = savedTokenStart;
-            tokenLine = savedTokenLine;
-            tokenColumn = savedTokenColumn;
+            // 确保缓存中有足够的token
+            fillTokenCache(n);
 
-            return token;
+            // 如果请求的位置超过了可用的token数量，返回EOF
+            if (n > tokenCache.size()) {
+                return Token(TokenKind::EndOfFile);
+            }
+
+            // 返回第n个token（从1开始计数）
+            return tokenCache[n - 1];
+        }
+
+        void Lexer::ungetToken(const Token& token) {
+            // 将token放回缓存的前面
+            tokenCache.push_front(token);
+
+            // 如果缓存超过了最大预读数量，移除最后一个token
+            if (tokenCache.size() > MAX_LOOKAHEAD) {
+                tokenCache.pop_back();
+            }
         }
 
     }  // namespace frontend

@@ -81,31 +81,6 @@ namespace rp {
             currentColumn = scanner->getCurrentColumn();
         }
 
-        Token Lexer::nextToken() {
-            if (!tokenCache.empty()) {
-                Token token = std::move(tokenCache.front());
-                tokenCache.pop_front();
-                return std::move(token);
-            }
-            return getNextTokenFromSource();
-        }
-
-        Token Lexer::peekToken() { return peekToken(1); }
-
-        Token Lexer::peekToken(size_t n) {
-            if (n == 0) {
-                return Token();
-            }
-
-            fillTokenCache(n);
-            if (n <= tokenCache.size()) {
-                return Token(std::move(tokenCache[n - 1]));
-            }
-            return Token(TokenKind::EndOfFile);
-        }
-
-        void Lexer::ungetToken(const Token& token) { tokenCache.push_front(token); }
-
         std::pair<size_t, size_t> Lexer::getCurrentPosition() const {
             return std::make_pair(currentLine, currentColumn);
         }
