@@ -10,27 +10,52 @@ namespace rp::frontend::unicode {
             return "";  // 返回空字符串表示无效码点
         }
 
-        std::string result;
-        result.reserve(4);  // 预分配最大可能需要的空间
+        // 获取所需的UTF-8字节数
+        size_t byteCount = UnicodeCore::getUtf8ByteCount(codepoint);
+        if (byteCount == 0) {
+            return "";  // 无效的码点范围
+        }
 
-        if (codepoint <= 0x7F) {
-            // 1字节编码 (0xxxxxxx)
-            result.push_back(static_cast<char>(codepoint));
-        } else if (codepoint <= 0x7FF) {
-            // 2字节编码 (110xxxxx 10xxxxxx)
-            result.push_back(static_cast<char>(0xC0 | (codepoint >> 6)));
-            result.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
-        } else if (codepoint <= 0xFFFF) {
-            // 3字节编码 (1110xxxx 10xxxxxx 10xxxxxx)
-            result.push_back(static_cast<char>(0xE0 | (codepoint >> 12)));
-            result.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
-            result.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
-        } else {
-            // 4字节编码 (11110xxx 10xxxxxx 10xxxxxx 10xxxxxx)
-            result.push_back(static_cast<char>(0xF0 | (codepoint >> 18)));
-            result.push_back(static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F)));
-            result.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
-            result.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+        std::string result;
+        result.reserve(byteCount);  // 预分配精确需要的空间
+
+        // 根据UTF-8编码规则进行编码
+        switch (byteCount) {
+            case 1:
+                // 1字节编码 (0xxxxxxx)
+                result.push_back(static_cast<char>(codepoint));
+                break;
+
+            case 2:
+                // 2字节编码 (110xxxxx 10xxxxxx)
+                result.push_back(static_cast<char>(0xC0 | ((codepoint >> 6) & 0x1F)));
+                result.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+                break;
+
+            case 3:
+                // 3字节编码 (1110xxxx 10xxxxxx 10xxxxxx)
+                result.push_back(static_cast<char>(0xE0 | ((codepoint >> 12) & 0x0F)));
+                result.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
+                result.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+                break;
+
+            case 4:
+                // 4字节编码 (11110xxx 10xxxxxx 10xxxxxx 10xxxxxx)
+                result.push_back(static_cast<char>(0xF0 | ((codepoint >> 18) & 0x07)));
+                result.push_back(static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F)));
+                result.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
+                result.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+                break;
+
+            default:
+                return "";  // 不应该发生
+        }
+
+        // 验证生成的UTF-8序列
+        size_t bytesRead;
+        uint32_t decodedCodepoint = utf8ToCodePoint(result, bytesRead);
+        if (decodedCodepoint != codepoint || bytesRead != byteCount) {
+            return "";  // 编码验证失败
         }
 
         return result;
@@ -38,67 +63,101 @@ namespace rp::frontend::unicode {
 
     bool UnicodeEncoding::decodeUtf8(const std::string &utf8, std::vector<uint32_t> &codepoints) {
         codepoints.clear();
-        codepoints.reserve(utf8.length());  // 预分配空间（最大可能需要的大小）
+
+        // 估计码点数量（UTF-8字符平均长度约为1.5字节）
+        codepoints.reserve(utf8.length() * 2 / 3);
 
         size_t i = 0;
         while (i < utf8.length()) {
-            size_t bytesRead;
-            uint32_t codepoint = utf8ToCodePoint(std::string_view(utf8.data() + i, utf8.length() - i), bytesRead);
+            // 获取UTF-8序列信息
+            auto seqInfo = UnicodeCore::getUtf8SequenceInfo(utf8, i);
 
-            if (bytesRead == 0 || !UnicodeCore::isValidCodepoint(codepoint)) {
+            // 检查序列是否有效
+            if (!seqInfo.valid) {
                 codepoints.clear();
-                return false;  // 解码错误或无效码点
+                return false;
             }
 
-            codepoints.push_back(codepoint);
-            i += bytesRead;
+            // 添加有效的码点
+            codepoints.push_back(seqInfo.codepoint);
+            i += seqInfo.length;
         }
 
+        // 收缩容器到实际大小
+        codepoints.shrink_to_fit();
         return true;
     }
 
     uint32_t UnicodeEncoding::utf8ToCodePoint(std::string_view sv, size_t &bytesRead) {
         bytesRead = 0;
-        if (sv.empty()) return 0;
+        if (sv.empty()) {
+            return 0;  // 空序列
+        }
 
+        // 获取首字节
         unsigned char firstByte = static_cast<unsigned char>(sv[0]);
-        size_t length = getMultiByteCharLength(firstByte);
 
-        if (length == 0 || length > sv.length()) {
-            return 0;  // 无效的UTF-8首字节或不完整的序列
+        // 获取序列长度
+        size_t length = UnicodeCore::getUtf8SequenceLength(firstByte);
+        if (length == 0) {
+            return 0;  // 无效的UTF-8首字节
+        }
+
+        // 检查序列完整性
+        if (length > sv.length()) {
+            return 0;  // 不完整的UTF-8序列
         }
 
         uint32_t codepoint;
+
+        // 处理ASCII字符的快速路径
         if (length == 1) {
             codepoint = firstByte;
-        } else {
-            // 检查后续字节
-            for (size_t i = 1; i < length; i++) {
-                if (!UnicodeCore::isUtf8ContinuationByte(static_cast<unsigned char>(sv[i]))) {
-                    return 0;  // 无效的后续字节
-                }
-            }
+            bytesRead = 1;
+            return codepoint;
+        }
 
-            // 解码多字节序列
-            switch (length) {
-                case 2:
-                    codepoint = ((firstByte & 0x1F) << 6) | (static_cast<unsigned char>(sv[1]) & 0x3F);
-                    if (codepoint < 0x80) return 0;  // 过长编码
-                    break;
-                case 3:
-                    codepoint = ((firstByte & 0x0F) << 12) | ((static_cast<unsigned char>(sv[1]) & 0x3F) << 6) |
-                                (static_cast<unsigned char>(sv[2]) & 0x3F);
-                    if (codepoint < 0x800) return 0;  // 过长编码
-                    break;
-                case 4:
-                    codepoint = ((firstByte & 0x07) << 18) | ((static_cast<unsigned char>(sv[1]) & 0x3F) << 12) |
-                                ((static_cast<unsigned char>(sv[2]) & 0x3F) << 6) |
-                                (static_cast<unsigned char>(sv[3]) & 0x3F);
-                    if (codepoint < 0x10000) return 0;  // 过长编码
-                    break;
-                default:
-                    return 0;  // 不应该发生
+        // 验证后续字节
+        for (size_t i = 1; i < length; i++) {
+            if (!UnicodeCore::isUtf8ContinuationByte(static_cast<unsigned char>(sv[i]))) {
+                return 0;  // 无效的后续字节
             }
+        }
+
+        // 根据UTF-8编码规则解码多字节序列
+        switch (length) {
+            case 2:
+                // 2字节序列：110xxxxx 10xxxxxx
+                codepoint = ((firstByte & 0x1F) << 6) | (static_cast<unsigned char>(sv[1]) & 0x3F);
+                // 检查是否为过长编码
+                if (codepoint < 0x80) {
+                    return 0;
+                }
+                break;
+
+            case 3:
+                // 3字节序列：1110xxxx 10xxxxxx 10xxxxxx
+                codepoint = ((firstByte & 0x0F) << 12) | ((static_cast<unsigned char>(sv[1]) & 0x3F) << 6) |
+                            (static_cast<unsigned char>(sv[2]) & 0x3F);
+                // 检查是否为过长编码或代理对码点
+                if (codepoint < 0x800 || (codepoint >= 0xD800 && codepoint <= 0xDFFF)) {
+                    return 0;
+                }
+                break;
+
+            case 4:
+                // 4字节序列：11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+                codepoint = ((firstByte & 0x07) << 18) | ((static_cast<unsigned char>(sv[1]) & 0x3F) << 12) |
+                            ((static_cast<unsigned char>(sv[2]) & 0x3F) << 6) |
+                            (static_cast<unsigned char>(sv[3]) & 0x3F);
+                // 检查是否为过长编码或超出Unicode范围
+                if (codepoint < 0x10000 || codepoint > 0x10FFFF) {
+                    return 0;
+                }
+                break;
+
+            default:
+                return 0;  // 不应该发生
         }
 
         // 验证解码出的码点
@@ -110,38 +169,48 @@ namespace rp::frontend::unicode {
         return codepoint;
     }
 
-    std::string UnicodeEncoding::codePointToUtf8(uint32_t codePoint) { return encodeUtf8(codePoint); }
+    std::string UnicodeEncoding::codePointToUtf8(uint32_t codePoint) {
+        // 直接使用encodeUtf8，它已经包含了所有必要的验证
+        return encodeUtf8(codePoint);
+    }
 
     std::tuple<uint32_t, size_t> UnicodeEncoding::getMultiByteChar(const std::string &str, size_t start) {
+        // 边界检查
         if (start >= str.length()) {
             return {0, 0};
         }
 
-        size_t bytesRead;
-        uint32_t codepoint = utf8ToCodePoint(std::string_view(str.data() + start, str.length() - start), bytesRead);
-        return {codepoint, bytesRead};
+        // 使用UnicodeCore获取序列信息
+        auto seqInfo = UnicodeCore::getUtf8SequenceInfo(str, start);
+
+        // 如果序列无效，返回错误值
+        if (!seqInfo.valid) {
+            return {0, 0};
+        }
+
+        return {seqInfo.codepoint, seqInfo.length};
     }
 
     bool UnicodeEncoding::isMultiByteChar(const std::string &str, size_t start) {
+        // 边界检查
         if (start >= str.length()) {
             return false;
         }
 
         unsigned char firstByte = static_cast<unsigned char>(str[start]);
-        return UnicodeCore::isValidUtf8FirstByte(firstByte) && (firstByte & 0x80) != 0;
+
+        // 检查是否是有效的UTF-8首字节且不是ASCII字符
+        if (!UnicodeCore::isValidUtf8FirstByte(firstByte)) {
+            return false;
+        }
+
+        // 检查是否是多字节字符（首字节最高位为1）
+        return (firstByte & 0x80) != 0;
     }
 
     size_t UnicodeEncoding::getMultiByteCharLength(unsigned char firstByte) {
-        if ((firstByte & 0x80) == 0) {
-            return 1;  // ASCII字符
-        } else if ((firstByte & 0xE0) == 0xC0) {
-            return 2;  // 2字节UTF-8
-        } else if ((firstByte & 0xF0) == 0xE0) {
-            return 3;  // 3字节UTF-8
-        } else if ((firstByte & 0xF8) == 0xF0) {
-            return 4;  // 4字节UTF-8
-        }
-        return 0;  // 无效的UTF-8首字节
+        // 使用UnicodeCore的序列长度检查
+        return UnicodeCore::getUtf8SequenceLength(firstByte);
     }
 
 }  // namespace rp::frontend::unicode

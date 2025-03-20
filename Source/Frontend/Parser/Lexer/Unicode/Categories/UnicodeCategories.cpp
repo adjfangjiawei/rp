@@ -11,16 +11,36 @@ namespace rp::frontend::unicode {
         }
 
         // 快速路径：ASCII标识符开始字符
-        if ((codepoint >= 'a' && codepoint <= 'z') || (codepoint >= 'A' && codepoint <= 'Z') || codepoint == '_') {
-            return true;
+        // 使用查找表来加速ASCII范围的检查
+        static const bool asciiIdentifierStart[128] = {
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x00-0x0F
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x10-0x1F
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x20-0x2F
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x30-0x3F
+            0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  // 0x40-0x4F (@, A-O)
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1,  // 0x50-0x5F (P-Z, _, underscore)
+            0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  // 0x60-0x6F (`, a-o)
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0   // 0x70-0x7F (p-z)
+        };
+
+        if (codepoint < 128) {
+            return asciiIdentifierStart[codepoint];
         }
 
         // 检查Unicode类别
         Category category;
         if (binarySearchUnicodeData(codepoint, category)) {
-            return category == Category::Letter_Uppercase || category == Category::Letter_Lowercase ||
-                   category == Category::Letter_Titlecase || category == Category::Letter_Modifier ||
-                   category == Category::Letter_Other;
+            // 检查是否属于标识符开始允许的类别
+            switch (category) {
+                case Category::Letter_Uppercase:
+                case Category::Letter_Lowercase:
+                case Category::Letter_Titlecase:
+                case Category::Letter_Modifier:
+                case Category::Letter_Other:
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         return false;
@@ -33,54 +53,99 @@ namespace rp::frontend::unicode {
         }
 
         // 快速路径：ASCII字符
-        if ((codepoint >= 'a' && codepoint <= 'z') || (codepoint >= 'A' && codepoint <= 'Z') ||
-            (codepoint >= '0' && codepoint <= '9') || codepoint == '_') {
-            return true;
+        // 使用查找表来加速ASCII范围的检查
+        static const bool asciiIdentifierContinue[128] = {
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x00-0x0F
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x10-0x1F
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x20-0x2F
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,  // 0x30-0x3F (0-9)
+            0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  // 0x40-0x4F (@, A-O)
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1,  // 0x50-0x5F (P-Z, _, underscore)
+            0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  // 0x60-0x6F (`, a-o)
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0   // 0x70-0x7F (p-z)
+        };
+
+        if (codepoint < 128) {
+            return asciiIdentifierContinue[codepoint];
         }
 
         // 检查Unicode类别
         Category category;
         if (binarySearchUnicodeData(codepoint, category)) {
-            return category == Category::Number_Decimal || category == Category::Number_Letter ||
-                   category == Category::Number_Other || category == Category::Mark_NonSpacing ||
-                   category == Category::Mark_SpacingCombining || category == Category::Mark_Enclosing ||
-                   category == Category::Punctuation_Connector || isIdentifierStart(codepoint);
+            // 检查是否属于标识符继续允许的类别
+            switch (category) {
+                case Category::Number_Decimal:
+                case Category::Number_Letter:
+                case Category::Number_Other:
+                case Category::Mark_NonSpacing:
+                case Category::Mark_SpacingCombining:
+                case Category::Mark_Enclosing:
+                case Category::Punctuation_Connector:
+                    return true;
+                default:
+                    // 如果不是上述类别，检查是否是合法的标识符开始字符
+                    return isIdentifierStart(codepoint);
+            }
         }
 
         return false;
     }
 
     bool UnicodeCategories::isWhitespace(uint32_t codepoint) {
-        // 快速路径：常见ASCII空白字符
-        if (codepoint <= 0x7F) {
-            return (codepoint == ' ' || codepoint == '\t' || codepoint == '\n' || codepoint == '\r' ||
-                    codepoint == '\f' || codepoint == '\v');
+        // 快速路径：ASCII空白字符
+        static const bool asciiWhitespace[128] = {
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0,  // 0x00-0x0F (TAB, LF, VT, FF, CR)
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x10-0x1F
+            1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x20-0x2F (SPACE)
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x30-0x3F
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 其余位置都是0
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+        if (codepoint < 128) {
+            return asciiWhitespace[codepoint];
         }
 
-        // Unicode空白字符
-        switch (codepoint) {
-            case 0x00A0:  // NO-BREAK SPACE
-            case 0x1680:  // OGHAM SPACE MARK
-            case 0x2000:  // EN QUAD
-            case 0x2001:  // EM QUAD
-            case 0x2002:  // EN SPACE
-            case 0x2003:  // EM SPACE
-            case 0x2004:  // THREE-PER-EM SPACE
-            case 0x2005:  // FOUR-PER-EM SPACE
-            case 0x2006:  // SIX-PER-EM SPACE
-            case 0x2007:  // FIGURE SPACE
-            case 0x2008:  // PUNCTUATION SPACE
-            case 0x2009:  // THIN SPACE
-            case 0x200A:  // HAIR SPACE
-            case 0x2028:  // LINE SEPARATOR
-            case 0x2029:  // PARAGRAPH SEPARATOR
-            case 0x202F:  // NARROW NO-BREAK SPACE
-            case 0x205F:  // MEDIUM MATHEMATICAL SPACE
-            case 0x3000:  // IDEOGRAPHIC SPACE
+        // Unicode空白字符查找表
+        // 使用二分查找优化大量case的查找
+        static const uint32_t unicodeWhitespace[] = {
+            0x00A0,  // NO-BREAK SPACE
+            0x1680,  // OGHAM SPACE MARK
+            0x2000,  // EN QUAD
+            0x2001,  // EM QUAD
+            0x2002,  // EN SPACE
+            0x2003,  // EM SPACE
+            0x2004,  // THREE-PER-EM SPACE
+            0x2005,  // FOUR-PER-EM SPACE
+            0x2006,  // SIX-PER-EM SPACE
+            0x2007,  // FIGURE SPACE
+            0x2008,  // PUNCTUATION SPACE
+            0x2009,  // THIN SPACE
+            0x200A,  // HAIR SPACE
+            0x2028,  // LINE SEPARATOR
+            0x2029,  // PARAGRAPH SEPARATOR
+            0x202F,  // NARROW NO-BREAK SPACE
+            0x205F,  // MEDIUM MATHEMATICAL SPACE
+            0x3000   // IDEOGRAPHIC SPACE
+        };
+
+        // 二分查找Unicode空白字符
+        int left = 0;
+        int right = sizeof(unicodeWhitespace) / sizeof(uint32_t) - 1;
+
+        while (left <= right) {
+            int mid = left + (right - left) / 2;
+            if (unicodeWhitespace[mid] == codepoint) {
                 return true;
-            default:
-                return false;
+            }
+            if (unicodeWhitespace[mid] < codepoint) {
+                left = mid + 1;
+            } else {
+                right = mid - 1;
+            }
         }
+
+        return false;
     }
 
     bool UnicodeCategories::isDigit(uint32_t codepoint) {
@@ -89,22 +154,49 @@ namespace rp::frontend::unicode {
         }
 
         // ASCII数字快速路径
-        if (codepoint >= '0' && codepoint <= '9') {
-            return true;
+        static const bool asciiDigit[128] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x00-0x0F
+                                             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x10-0x1F
+                                             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x20-0x2F
+                                             1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,  // 0x30-0x3F (0-9)
+                                             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 其余位置都是0
+                                             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                                             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+        if (codepoint < 128) {
+            return asciiDigit[codepoint];
         }
 
         // 检查是否为Unicode十进制数字
         Category category;
         if (binarySearchUnicodeData(codepoint, category)) {
-            return category == Category::Number_Decimal;
+            // 包括扩展的数字类别
+            switch (category) {
+                case Category::Number_Decimal:  // 十进制数字
+                case Category::Number_Letter:   // 字母数字（如罗马数字）
+                case Category::Number_Other:    // 其他数字
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         return false;
     }
 
     bool UnicodeCategories::isHexDigit(uint32_t codepoint) {
-        return (codepoint >= '0' && codepoint <= '9') || (codepoint >= 'a' && codepoint <= 'f') ||
-               (codepoint >= 'A' && codepoint <= 'F');
+        // 使用查找表优化十六进制数字检查
+        static const bool asciiHexDigit[128] = {
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x00-0x0F
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x10-0x1F
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x20-0x2F
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,  // 0x30-0x3F (0-9)
+            0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x40-0x4F (A-F)
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x50-0x5F
+            0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x60-0x6F (a-f)
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0   // 0x70-0x7F
+        };
+
+        return codepoint < 128 && asciiHexDigit[codepoint];
     }
 
     bool UnicodeCategories::isAlpha(uint32_t codepoint) {
@@ -113,188 +205,176 @@ namespace rp::frontend::unicode {
         }
 
         // ASCII字母快速路径
-        if ((codepoint >= 'A' && codepoint <= 'Z') || (codepoint >= 'a' && codepoint <= 'z')) {
-            return true;
+        static const bool asciiAlpha[128] = {
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x00-0x0F
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x10-0x1F
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x20-0x2F
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x30-0x3F
+            0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  // 0x40-0x4F (@, A-O)
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0,  // 0x50-0x5F (P-Z)
+            0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  // 0x60-0x6F (`, a-o)
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0   // 0x70-0x7F (p-z)
+        };
+
+        if (codepoint < 128) {
+            return asciiAlpha[codepoint];
         }
 
         // 检查Unicode字母类别
         Category category;
         if (binarySearchUnicodeData(codepoint, category)) {
-            return category == Category::Letter_Uppercase || category == Category::Letter_Lowercase ||
-                   category == Category::Letter_Titlecase || category == Category::Letter_Modifier ||
-                   category == Category::Letter_Other;
+            switch (category) {
+                case Category::Letter_Uppercase:
+                case Category::Letter_Lowercase:
+                case Category::Letter_Titlecase:
+                case Category::Letter_Modifier:
+                case Category::Letter_Other:
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         return false;
     }
 
-    bool UnicodeCategories::isAlnum(uint32_t codepoint) { return isAlpha(codepoint) || isDigit(codepoint); }
+    bool UnicodeCategories::isAlnum(uint32_t codepoint) {
+        if (!UnicodeCore::isValidCodepoint(codepoint)) {
+            return false;
+        }
+
+        // ASCII字母数字快速路径
+        static const bool asciiAlnum[128] = {
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x00-0x0F
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x10-0x1F
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x20-0x2F
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,  // 0x30-0x3F (0-9)
+            0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  // 0x40-0x4F (@, A-O)
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0,  // 0x50-0x5F (P-Z)
+            0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  // 0x60-0x6F (`, a-o)
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0   // 0x70-0x7F (p-z)
+        };
+
+        if (codepoint < 128) {
+            return asciiAlnum[codepoint];
+        }
+
+        return isAlpha(codepoint) || isDigit(codepoint);
+    }
 
     UnicodeCategories::Category UnicodeCategories::getCategory(uint32_t codepoint) {
+        // 首先验证码点的有效性
         if (!UnicodeCore::isValidCodepoint(codepoint)) {
             return Category::Other_NotAssigned;
+        }
+
+        // ASCII字符快速路径
+        if (codepoint < 128) {
+            // ASCII控制字符
+            if (codepoint < 0x20 || codepoint == 0x7F) {
+                return Category::Other_Control;
+            }
+            // ASCII空格
+            if (codepoint == 0x20) {
+                return Category::Separator_Space;
+            }
+            // ASCII数字
+            if (codepoint >= '0' && codepoint <= '9') {
+                return Category::Number_Decimal;
+            }
+            // ASCII大写字母
+            if (codepoint >= 'A' && codepoint <= 'Z') {
+                return Category::Letter_Uppercase;
+            }
+            // ASCII小写字母
+            if (codepoint >= 'a' && codepoint <= 'z') {
+                return Category::Letter_Lowercase;
+            }
+            // ASCII标点符号
+            return Category::Punctuation_Other;
+        }
+
+        // 代理项范围快速检查
+        if (codepoint >= SURROGATE_MIN && codepoint <= SURROGATE_MAX) {
+            return Category::Other_Surrogate;
+        }
+
+        // 私有使用区域快速检查
+        if (codepoint >= 0xE000 && codepoint <= 0xF8FF) {
+            return Category::Other_PrivateUse;
         }
 
         Category category;
         if (binarySearchUnicodeData(codepoint, category)) {
             return category;
         }
+
+        // 未分配的码点
         return Category::Other_NotAssigned;
     }
 
     bool UnicodeCategories::isInCategory(uint32_t codepoint, Category category) {
+        // 优化：对于某些类别，可以进行快速路径检查
+        switch (category) {
+            case Category::Letter_Uppercase:
+                if (codepoint >= 'A' && codepoint <= 'Z') {
+                    return true;
+                }
+                break;
+            case Category::Letter_Lowercase:
+                if (codepoint >= 'a' && codepoint <= 'z') {
+                    return true;
+                }
+                break;
+            case Category::Number_Decimal:
+                if (codepoint >= '0' && codepoint <= '9') {
+                    return true;
+                }
+                break;
+            case Category::Separator_Space:
+                if (codepoint == ' ' || codepoint == '\t') {
+                    return true;
+                }
+                break;
+            case Category::Other_Control:
+                if (codepoint < 0x20 || codepoint == 0x7F) {
+                    return true;
+                }
+                break;
+            default:
+                break;
+        }
+
+        // 如果快速路径未命中，则进行完整的类别检查
         return getCategory(codepoint) == category;
     }
 
-    // Unicode字符分类数据表
-    struct UnicodeRange {
-        uint32_t start;
-        uint32_t end;
-        UnicodeCategories::Category category;
-    };
-
-    // 扩展的Unicode范围分类数据
-    static const UnicodeRange unicodeRanges[] = {
-        {0x0000, 0x001F, UnicodeCategories::Category::Other_Control},        // C0控制字符
-        {0x0020, 0x0020, UnicodeCategories::Category::Separator_Space},      // 空格
-        {0x0021, 0x002F, UnicodeCategories::Category::Punctuation_Other},    // ASCII标点
-        {0x0030, 0x0039, UnicodeCategories::Category::Number_Decimal},       // ASCII数字
-        {0x003A, 0x0040, UnicodeCategories::Category::Punctuation_Other},    // ASCII标点
-        {0x0041, 0x005A, UnicodeCategories::Category::Letter_Uppercase},     // ASCII大写字母
-        {0x005B, 0x0060, UnicodeCategories::Category::Punctuation_Other},    // ASCII标点
-        {0x0061, 0x007A, UnicodeCategories::Category::Letter_Lowercase},     // ASCII小写字母
-        {0x007B, 0x007E, UnicodeCategories::Category::Punctuation_Other},    // ASCII标点
-        {0x007F, 0x009F, UnicodeCategories::Category::Other_Control},        // C1控制字符
-        {0x00A0, 0x00A0, UnicodeCategories::Category::Separator_Space},      // 不间断空格
-        {0x00A1, 0x00BF, UnicodeCategories::Category::Punctuation_Other},    // Latin-1标点
-        {0x00C0, 0x00D6, UnicodeCategories::Category::Letter_Uppercase},     // Latin-1大写字母
-        {0x00D7, 0x00D7, UnicodeCategories::Category::Symbol_Math},          // 乘号
-        {0x00D8, 0x00DE, UnicodeCategories::Category::Letter_Uppercase},     // Latin-1大写字母
-        {0x00DF, 0x00F6, UnicodeCategories::Category::Letter_Lowercase},     // Latin-1小写字母
-        {0x00F7, 0x00F7, UnicodeCategories::Category::Symbol_Math},          // 除号
-        {0x00F8, 0x00FF, UnicodeCategories::Category::Letter_Lowercase},     // Latin-1小写字母
-        {0x0100, 0x017F, UnicodeCategories::Category::Letter_Other},         // 扩展Latin-A
-        {0x0180, 0x024F, UnicodeCategories::Category::Letter_Other},         // 扩展Latin-B
-        {0x0250, 0x02AF, UnicodeCategories::Category::Letter_Other},         // 国际音标扩展
-        {0x02B0, 0x02FF, UnicodeCategories::Category::Letter_Modifier},      // 声调修饰符
-        {0x0300, 0x036F, UnicodeCategories::Category::Mark_NonSpacing},      // 组合变音标记
-        {0x0370, 0x03FF, UnicodeCategories::Category::Letter_Other},         // 希腊和科普特文
-        {0x0400, 0x04FF, UnicodeCategories::Category::Letter_Other},         // 西里尔字母
-        {0x0500, 0x052F, UnicodeCategories::Category::Letter_Other},         // 西里尔补充
-        {0x0530, 0x058F, UnicodeCategories::Category::Letter_Other},         // 亚美尼亚文
-        {0x0590, 0x05FF, UnicodeCategories::Category::Letter_Other},         // 希伯来文
-        {0x0600, 0x06FF, UnicodeCategories::Category::Letter_Other},         // 阿拉伯文
-        {0x0900, 0x097F, UnicodeCategories::Category::Letter_Other},         // 天城文
-        {0x0980, 0x09FF, UnicodeCategories::Category::Letter_Other},         // 孟加拉文
-        {0x0A00, 0x0A7F, UnicodeCategories::Category::Letter_Other},         // 古木基文
-        {0x0A80, 0x0AFF, UnicodeCategories::Category::Letter_Other},         // 古吉拉特文
-        {0x0B00, 0x0B7F, UnicodeCategories::Category::Letter_Other},         // 奥里亚文
-        {0x0B80, 0x0BFF, UnicodeCategories::Category::Letter_Other},         // 泰米尔文
-        {0x0C00, 0x0C7F, UnicodeCategories::Category::Letter_Other},         // 泰卢固文
-        {0x0C80, 0x0CFF, UnicodeCategories::Category::Letter_Other},         // 卡纳达文
-        {0x0D00, 0x0D7F, UnicodeCategories::Category::Letter_Other},         // 马拉雅拉姆文
-        {0x0D80, 0x0DFF, UnicodeCategories::Category::Letter_Other},         // 僧伽罗文
-        {0x0E00, 0x0E7F, UnicodeCategories::Category::Letter_Other},         // 泰文
-        {0x0E80, 0x0EFF, UnicodeCategories::Category::Letter_Other},         // 老挝文
-        {0x0F00, 0x0FFF, UnicodeCategories::Category::Letter_Other},         // 藏文
-        {0x1000, 0x109F, UnicodeCategories::Category::Letter_Other},         // 缅甸文
-        {0x10A0, 0x10FF, UnicodeCategories::Category::Letter_Other},         // 格鲁吉亚文
-        {0x1100, 0x11FF, UnicodeCategories::Category::Letter_Other},         // 谚文字母
-        {0x1680, 0x169F, UnicodeCategories::Category::Letter_Other},         // 欧甘字母
-        {0x16A0, 0x16FF, UnicodeCategories::Category::Letter_Other},         // 卢恩字母
-        {0x1700, 0x171F, UnicodeCategories::Category::Letter_Other},         // 他加禄字母
-        {0x1720, 0x173F, UnicodeCategories::Category::Letter_Other},         // 哈努诺文
-        {0x1740, 0x175F, UnicodeCategories::Category::Letter_Other},         // 布希德文
-        {0x1760, 0x177F, UnicodeCategories::Category::Letter_Other},         // 塔格巴努亚文
-        {0x1780, 0x17FF, UnicodeCategories::Category::Letter_Other},         // 高棉文
-        {0x1800, 0x18AF, UnicodeCategories::Category::Letter_Other},         // 蒙古文
-        {0x1E00, 0x1EFF, UnicodeCategories::Category::Letter_Other},         // 拉丁文扩展附加
-        {0x1F00, 0x1FFF, UnicodeCategories::Category::Letter_Other},         // 希腊文扩展
-        {0x2000, 0x200A, UnicodeCategories::Category::Separator_Space},      // 各种空格
-        {0x2010, 0x2027, UnicodeCategories::Category::Punctuation_Dash},     // 各种破折号
-        {0x2028, 0x2028, UnicodeCategories::Category::Separator_Line},       // 行分隔符
-        {0x2029, 0x2029, UnicodeCategories::Category::Separator_Paragraph},  // 段落分隔符
-        {0x202A, 0x202E, UnicodeCategories::Category::Other_Format},         // 双向文本控制
-        {0x2030, 0x205E, UnicodeCategories::Category::Punctuation_Other},    // 常用标点
-        {0x2060, 0x2064, UnicodeCategories::Category::Other_Format},         // 不可见格式控制
-        {0x206A, 0x206F, UnicodeCategories::Category::Other_Format},         // 一般格式控制
-        {0x2070, 0x209F, UnicodeCategories::Category::Number_Other},         // 上标和下标
-        {0x20A0, 0x20CF, UnicodeCategories::Category::Symbol_Currency},      // 货币符号
-        {0x20D0, 0x20FF, UnicodeCategories::Category::Mark_NonSpacing},      // 组合变音标记for符号
-        {0x2100, 0x214F, UnicodeCategories::Category::Symbol_Other},         // 字母符号
-        {0x2150, 0x218F, UnicodeCategories::Category::Number_Other},         // 数字形式
-        {0x2190, 0x21FF, UnicodeCategories::Category::Symbol_Math},          // 箭头
-        {0x2200, 0x22FF, UnicodeCategories::Category::Symbol_Math},          // 数学运算符
-        {0x2300, 0x23FF, UnicodeCategories::Category::Symbol_Other},         // 各种技术符号
-        {0x2400, 0x243F, UnicodeCategories::Category::Symbol_Other},         // 控制图片
-        {0x2440, 0x245F, UnicodeCategories::Category::Symbol_Other},         // OCR
-        {0x2460, 0x24FF, UnicodeCategories::Category::Number_Other},         // 带圈数字
-        {0x2500, 0x257F, UnicodeCategories::Category::Symbol_Other},         // 制表符
-        {0x2580, 0x259F, UnicodeCategories::Category::Symbol_Other},         // 方块元素
-        {0x25A0, 0x25FF, UnicodeCategories::Category::Symbol_Other},         // 几何图形
-        {0x2600, 0x26FF, UnicodeCategories::Category::Symbol_Other},         // 杂项符号
-        {0x2700, 0x27BF, UnicodeCategories::Category::Symbol_Other},         // 装饰符号
-        {0x27C0, 0x27EF, UnicodeCategories::Category::Symbol_Math},          // 杂项数学符号-A
-        {0x27F0, 0x27FF, UnicodeCategories::Category::Symbol_Math},          // 补充箭头-A
-        {0x2800, 0x28FF, UnicodeCategories::Category::Symbol_Other},         // 盲文图案
-        {0x2900, 0x297F, UnicodeCategories::Category::Symbol_Math},          // 补充箭头-B
-        {0x2980, 0x29FF, UnicodeCategories::Category::Symbol_Math},          // 杂项数学符号-B
-        {0x2A00, 0x2AFF, UnicodeCategories::Category::Symbol_Math},          // 补充数学运算符
-        {0x2B00, 0x2BFF, UnicodeCategories::Category::Symbol_Other},         // 杂项符号和箭头
-        {0x2E00, 0x2E7F, UnicodeCategories::Category::Punctuation_Other},    // 补充标点
-        {0x2E80, 0x2EFF, UnicodeCategories::Category::Symbol_Other},         // CJK部首补充
-        {0x2F00, 0x2FDF, UnicodeCategories::Category::Symbol_Other},         // 康熙部首
-        {0x2FF0, 0x2FFF, UnicodeCategories::Category::Symbol_Other},         // 表意文字描述符
-        {0x3000, 0x303F, UnicodeCategories::Category::Punctuation_Other},    // CJK符号和标点
-        {0x3040, 0x309F, UnicodeCategories::Category::Letter_Other},         // 平假名
-        {0x30A0, 0x30FF, UnicodeCategories::Category::Letter_Other},         // 片假名
-        {0x3100, 0x312F, UnicodeCategories::Category::Letter_Other},         // 注音符号
-        {0x3130, 0x318F, UnicodeCategories::Category::Letter_Other},         // 谚文兼容字母
-        {0x3190, 0x319F, UnicodeCategories::Category::Symbol_Other},         // 象形字注释标志
-        {0x31A0, 0x31BF, UnicodeCategories::Category::Letter_Other},         // 注音符号扩展
-        {0x31F0, 0x31FF, UnicodeCategories::Category::Letter_Other},         // 片假名语音扩展
-        {0x3200, 0x32FF, UnicodeCategories::Category::Symbol_Other},         // 带圈字符
-        {0x3300, 0x33FF, UnicodeCategories::Category::Symbol_Other},         // CJK兼容
-        {0x3400, 0x4DBF, UnicodeCategories::Category::Letter_Other},         // CJK统一表意文字扩展A
-        {0x4DC0, 0x4DFF, UnicodeCategories::Category::Symbol_Other},         // 易经六十四卦符号
-        {0x4E00, 0x9FFF, UnicodeCategories::Category::Letter_Other},         // CJK统一表意文字
-        {0xA000, 0xA48F, UnicodeCategories::Category::Letter_Other},         // 彝文音节
-        {0xA490, 0xA4CF, UnicodeCategories::Category::Symbol_Other},         // 彝文部首
-        {0xAC00, 0xD7AF, UnicodeCategories::Category::Letter_Other},         // 朝鲜文音节
-        {0xD800, 0xDBFF, UnicodeCategories::Category::Other_Surrogate},      // 高位代理项
-        {0xDC00, 0xDFFF, UnicodeCategories::Category::Other_Surrogate},      // 低位代理项
-        {0xE000, 0xF8FF, UnicodeCategories::Category::Other_PrivateUse},     // 私用区
-        {0xF900, 0xFAFF, UnicodeCategories::Category::Letter_Other},         // CJK兼容表意文字
-        {0xFB00, 0xFB4F, UnicodeCategories::Category::Letter_Other},         // 字母表示形式
-        {0xFB50, 0xFDFF, UnicodeCategories::Category::Letter_Other},         // 阿拉伯表示形式A
-        {0xFE00, 0xFE0F, UnicodeCategories::Category::Mark_NonSpacing},      // 变体选择符
-        {0xFE10, 0xFE1F, UnicodeCategories::Category::Punctuation_Other},    // 竖排形式
-        {0xFE20, 0xFE2F, UnicodeCategories::Category::Mark_NonSpacing},      // 组合用半符号
-        {0xFE30, 0xFE4F, UnicodeCategories::Category::Punctuation_Other},    // CJK兼容形式
-        {0xFE50, 0xFE6F, UnicodeCategories::Category::Punctuation_Other},    // 小型变体形式
-        {0xFE70, 0xFEFF, UnicodeCategories::Category::Letter_Other},         // 阿拉伯表示形式B
-        {0xFF00, 0xFFEF, UnicodeCategories::Category::Symbol_Other},         // 半角及全角形式
-        {0xFFF0, 0xFFFF, UnicodeCategories::Category::Other_NotAssigned}     // 特殊
-    };
-
+    // Unicode字符分类数据
     bool UnicodeCategories::binarySearchUnicodeData(uint32_t codepoint, Category &category) {
-        int left = 0;
-        int right = sizeof(unicodeRanges) / sizeof(UnicodeRange) - 1;
+        // 使用二分查找在Unicode范围表中查找码点
+        // 表已按起始码点排序，可以进行高效的二分查找
+        const size_t rangeCount = sizeof(unicodeRanges) / sizeof(UnicodeRange);
+        size_t left = 0;
+        size_t right = rangeCount - 1;
 
         while (left <= right) {
-            int mid = left + (right - left) / 2;
+            size_t mid = left + (right - left) / 2;
             const UnicodeRange &range = unicodeRanges[mid];
 
+            // 检查码点是否在当前范围内
             if (codepoint < range.start) {
+                if (mid == 0) break;  // 防止无符号整数下溢
                 right = mid - 1;
             } else if (codepoint > range.end) {
                 left = mid + 1;
             } else {
+                // 找到匹配的范围
                 category = range.category;
                 return true;
             }
         }
 
+        // 未找到匹配的范围
         category = Category::Other_NotAssigned;
         return false;
     }
