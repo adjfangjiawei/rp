@@ -21,15 +21,5 @@ namespace rp {
 #undef TYPE
         };
 
-        // 辅助函数声明
-        bool isKeyword(TokenKind kind);
-        bool isOperator(TokenKind kind);
-        bool isDelimiter(TokenKind kind);
-        bool isDirective(TokenKind kind);
-        bool isTypeKeyword(TokenKind kind);
-
-        // 获取TokenKind对应的字符串表示
-        const char* getTokenKindName(TokenKind kind);
-
     }  // namespace frontend
 }  // namespace rp

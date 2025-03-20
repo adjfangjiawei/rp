@@ -17,6 +17,9 @@ KEYWORD(Final,        "final")
 KEYWORD(Public,       "public")
 KEYWORD(Private,      "private")
 KEYWORD(Protected,    "protected")
+KEYWORD(Volatile,    "volatile")
+KEYWORD(Inline,      "inline")
+KEYWORD(Explicit,    "explicit")
 
 // Control flow keywords
 KEYWORD(If,           "if")

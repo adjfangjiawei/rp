@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -138,19 +139,50 @@ namespace rp {
             // 获取错误信息
             std::string getErrorMessage() const { return errorInfo ? errorInfo->message : ""; }
 
+            // 获取错误位置
+            std::optional<std::pair<unsigned, unsigned>> getErrorLocation() const {
+                if (errorInfo && errorInfo->hasError) {
+                    return std::make_pair(errorInfo->errorLine, errorInfo->errorColumn);
+                }
+                return std::nullopt;
+            }
+
             // 检查字符串类型
             bool isRawString() const { return stringInfo && stringInfo->isRawString; }
-
             bool isWideString() const { return stringInfo && stringInfo->isWide; }
-
             bool isUTF8String() const { return stringInfo && stringInfo->isUTF8; }
-
             bool isUTF16String() const { return stringInfo && stringInfo->isUTF16; }
-
             bool isUTF32String() const { return stringInfo && stringInfo->isUTF32; }
 
             // 获取原始字符串分隔符
             std::string getDelimiter() const { return stringInfo ? stringInfo->delimiter : ""; }
+
+            // 获取完整的位置信息
+            std::string getLocation() const {
+                return filename + ":" + std::to_string(line) + ":" + std::to_string(column);
+            }
+
+            // 类型安全的值获取函数
+            std::optional<long long> getIntValue() const {
+                if (kind == TokenKind::NumberLiteral) {
+                    return intValue;
+                }
+                return std::nullopt;
+            }
+
+            std::optional<double> getFloatValue() const {
+                if (kind == TokenKind::NumberLiteral) {
+                    return floatValue;
+                }
+                return std::nullopt;
+            }
+
+            std::optional<bool> getBoolValue() const {
+                if (kind == TokenKind::NumberLiteral) {
+                    return boolValue;
+                }
+                return std::nullopt;
+            }
 
             // 拷贝构造函数
             Token(const Token& other)
@@ -220,6 +252,12 @@ namespace rp {
             TokenKind getKind() const { return kind; }
             unsigned getLine() const { return line; }
             unsigned getColumn() const { return column; }
+            const std::string& getFilename() const { return filename; }
+
+            // 比较操作符
+            bool operator==(const Token& other) const { return kind == other.kind && text == other.text; }
+
+            bool operator!=(const Token& other) const { return !(*this == other); }
         };
 
     }  // namespace frontend
