@@ -2,46 +2,45 @@
 
 #include <stdexcept>
 
+#include "../Core/UnicodeCore.h"
+#include "../Encoding/UnicodeEncoding.h"
+
 namespace rp::frontend::unicode {
+
+    namespace {
+        // UTF-8序列长度常量
+        constexpr size_t MAX_UTF8_BYTES = 4;
+
+        // 错误消息
+        constexpr const char* ERROR_INVALID_START = "Invalid UTF-8 start byte";
+        constexpr const char* ERROR_INVALID_CONTINUATION = "Invalid UTF-8 continuation byte";
+        constexpr const char* ERROR_INCOMPLETE_SEQUENCE = "Incomplete UTF-8 sequence";
+        constexpr const char* ERROR_OVERLONG_ENCODING = "Overlong UTF-8 encoding detected";
+        constexpr const char* ERROR_INVALID_CODEPOINT = "Invalid Unicode codepoint";
+    }  // namespace
 
     std::string UTF8Scanner::scanUTF8Sequence() {
         if (!hasMore()) {
             return "";
         }
 
-        std::string sequence;
-        char first = advance();
-        sequence += first;
+        // 获取序列起始位置
+        size_t startPos = position();
+        char first = peek();
 
-        // 获取需要的后续字节数
-        int continuationBytes = 0;
-        unsigned char uc = static_cast<unsigned char>(first);
+        // 使用Core模块验证序列
+        UnicodeCore::Utf8SequenceInfo info = UnicodeCore::getUtf8SequenceInfo(input_, startPos);
 
-        if ((uc & 0x80) == 0) {
-            // ASCII字符
-            return sequence;
-        } else if ((uc & 0xE0) == 0xC0) {
-            // 2字节序列
-            continuationBytes = 1;
-        } else if ((uc & 0xF0) == 0xE0) {
-            // 3字节序列
-            continuationBytes = 2;
-        } else if ((uc & 0xF8) == 0xF0) {
-            // 4字节序列
-            continuationBytes = 3;
-        } else {
-            // 无效的UTF-8序列
-            reportInvalidUTF8("Invalid UTF-8 start byte");
-            return sequence;
+        if (!info.valid) {
+            reportInvalidUTF8(info.error);
+            advance();  // 跳过无效字节
+            return std::string(1, first);
         }
 
-        // 读取后续字节
-        for (int i = 0; i < continuationBytes && hasMore(); ++i) {
-            char next = peek();
-            if (!isValidUTF8Continuation(next)) {
-                reportInvalidUTF8("Invalid UTF-8 continuation byte");
-                break;
-            }
+        // 构建有效的UTF-8序列
+        std::string sequence;
+        sequence.reserve(info.length);
+        for (size_t i = 0; i < info.length; ++i) {
             sequence += advance();
         }
 
@@ -49,69 +48,157 @@ namespace rp::frontend::unicode {
     }
 
     uint32_t UTF8Scanner::decodeUTF8Sequence(char first) {
-        unsigned char uc = static_cast<unsigned char>(first);
-        uint32_t codepoint = 0;
-        int continuationBytes = 0;
+        size_t startPos = position() - 1;  // 减1是因为first已经被读取
 
-        // 确定序列长度和初始位
-        if ((uc & 0x80) == 0) {
-            return uc;
-        } else if ((uc & 0xE0) == 0xC0) {
-            codepoint = uc & 0x1F;
-            continuationBytes = 1;
-        } else if ((uc & 0xF0) == 0xE0) {
-            codepoint = uc & 0x0F;
-            continuationBytes = 2;
-        } else if ((uc & 0xF8) == 0xF0) {
-            codepoint = uc & 0x07;
-            continuationBytes = 3;
-        } else {
-            reportInvalidUTF8("Invalid UTF-8 start byte");
+        // 使用Core模块验证和解码序列
+        UnicodeCore::Utf8SequenceInfo info = UnicodeCore::getUtf8SequenceInfo(input_, startPos);
+
+        if (!info.valid) {
+            reportInvalidUTF8(info.error);
             return 0xFFFD;  // Unicode替换字符
         }
 
-        // 读取后续字节
-        size_t originalPosition = position();
-        for (int i = 0; i < continuationBytes && hasMore(); ++i) {
-            char next = peek();
-            if (!isValidUTF8Continuation(next)) {
-                reportInvalidUTF8("Invalid UTF-8 continuation byte");
-                setPosition(originalPosition);
-                return 0xFFFD;
-            }
-            advance();
-            codepoint = (codepoint << 6) | (static_cast<unsigned char>(next) & 0x3F);
-        }
-
-        // 验证码点范围
-        if ((codepoint > 0x10FFFF) ||                     // 超出Unicode范围
-            (codepoint >= 0xD800 && codepoint <= 0xDFFF)  // 代理对范围
-        ) {
-            reportInvalidUTF8("Invalid Unicode codepoint");
-            return 0xFFFD;
-        }
-
-        return codepoint;
+        // 移动位置到序列末尾
+        setPosition(startPos + info.length);
+        return info.codepoint;
     }
 
     void UTF8Scanner::skipInvalidUTF8() {
-        // 跳过当前的无效字节，直到找到有效的UTF-8序列起始字节
         while (hasMore()) {
+            size_t currentPos = position();
             char c = peek();
-            unsigned char uc = static_cast<unsigned char>(c);
 
-            // 检查是否是有效的UTF-8起始字节
-            if ((uc & 0x80) == 0 ||     // ASCII
-                (uc & 0xE0) == 0xC0 ||  // 2字节序列起始
-                (uc & 0xF0) == 0xE0 ||  // 3字节序列起始
-                (uc & 0xF8) == 0xF0) {  // 4字节序列起始
-                break;
+            // 使用Core模块验证当前位置是否是有效的UTF-8序列开始
+            if (UnicodeCore::isValidUtf8FirstByte(static_cast<unsigned char>(c))) {
+                UnicodeCore::Utf8SequenceInfo info = UnicodeCore::getUtf8SequenceInfo(input_, currentPos);
+                if (info.valid) {
+                    break;
+                }
             }
 
             advance();  // 跳过无效字节
         }
     }
 
-    void UTF8Scanner::reportInvalidUTF8(const std::string& message) { lastError_ = {message, position()}; }
+    void UTF8Scanner::reportInvalidUTF8(const std::string& message) {
+        std::string detailedMessage = message + " at position " + std::to_string(position());
+
+        // 添加上下文信息
+        if (position() > 0) {
+            detailedMessage += "\nContext: ";
+            size_t contextStart = (position() > 10) ? position() - 10 : 0;
+            size_t contextLength = std::min(20ul, input_.length() - contextStart);
+            detailedMessage += input_.substr(contextStart, contextLength);
+            detailedMessage += "\n";
+            for (size_t i = contextStart; i < position(); ++i) {
+                detailedMessage += " ";
+            }
+            detailedMessage += "^";
+        }
+
+        lastError_ = {detailedMessage, position()};
+    }
+
+    // 新增的辅助方法
+
+    bool UTF8Scanner::tryPeekCodepoint(uint32_t& codepoint) const {
+        if (!hasMore()) {
+            return false;
+        }
+
+        size_t currentPos = position();
+        UnicodeCore::Utf8SequenceInfo info = UnicodeCore::getUtf8SequenceInfo(input_, currentPos);
+
+        if (!info.valid) {
+            return false;
+        }
+
+        codepoint = info.codepoint;
+        return true;
+    }
+
+    size_t UTF8Scanner::lookAhead(size_t n) const {
+        size_t pos = position();
+        size_t count = 0;
+
+        while (count < n && pos < input_.length()) {
+            UnicodeCore::Utf8SequenceInfo info = UnicodeCore::getUtf8SequenceInfo(input_, pos);
+            if (!info.valid) {
+                pos++;  // 跳过无效字节
+            } else {
+                pos += info.length;
+                count++;
+            }
+        }
+
+        return pos;
+    }
+
+    std::string UTF8Scanner::peekString(size_t length) const {
+        if (!hasMore()) {
+            return "";
+        }
+
+        std::string result;
+        size_t pos = position();
+        size_t charCount = 0;
+
+        while (charCount < length && pos < input_.length()) {
+            UnicodeCore::Utf8SequenceInfo info = UnicodeCore::getUtf8SequenceInfo(input_, pos);
+            if (!info.valid) {
+                result += input_[pos++];  // 添加无效字节
+            } else {
+                result.append(input_.substr(pos, info.length));
+                pos += info.length;
+                charCount++;
+            }
+        }
+
+        return result;
+    }
+
+    bool UTF8Scanner::skipUntil(uint32_t targetCodepoint) {
+        while (hasMore()) {
+            size_t currentPos = position();
+            UnicodeCore::Utf8SequenceInfo info = UnicodeCore::getUtf8SequenceInfo(input_, currentPos);
+
+            if (info.valid) {
+                if (info.codepoint == targetCodepoint) {
+                    setPosition(currentPos);
+                    return true;
+                }
+                setPosition(currentPos + info.length);
+            } else {
+                advance();  // 跳过无效字节
+            }
+        }
+        return false;
+    }
+
+    std::string UTF8Scanner::collectUntil(uint32_t targetCodepoint) {
+        std::string result;
+        size_t start = position();
+
+        while (hasMore()) {
+            size_t currentPos = position();
+            UnicodeCore::Utf8SequenceInfo info = UnicodeCore::getUtf8SequenceInfo(input_, currentPos);
+
+            if (info.valid) {
+                if (info.codepoint == targetCodepoint) {
+                    break;
+                }
+                setPosition(currentPos + info.length);
+            } else {
+                advance();  // 跳过无效字节
+            }
+        }
+
+        size_t end = position();
+        if (end > start) {
+            result = input_.substr(start, end - start);
+        }
+
+        return result;
+    }
 
 }  // namespace rp::frontend::unicode

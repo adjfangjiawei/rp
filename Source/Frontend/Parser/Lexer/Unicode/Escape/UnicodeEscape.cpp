@@ -7,6 +7,17 @@
 
 namespace rp::frontend::unicode {
 
+    namespace {
+        // 常量定义
+        constexpr char ESCAPE_CHAR = '\\';
+        constexpr size_t HEX_ESCAPE_LENGTH = 2;
+        constexpr size_t UNICODE_ESCAPE_LENGTH = 4;
+        constexpr size_t EXTENDED_UNICODE_ESCAPE_LENGTH = 8;
+
+        // 辅助函数
+        constexpr bool isNewLine(char c) { return c == '\n' || c == '\r'; }
+    }  // namespace
+
     UnicodeEscape::EscapeResult UnicodeEscape::parseEscapeSequence(const std::string& input, size_t start) {
         if (start >= input.length()) {
             return {false, 0, 0, "Unexpected end of input"};
@@ -16,70 +27,67 @@ namespace rp::frontend::unicode {
 
         // 处理基本转义序列
         switch (c) {
+            case 'a':
+                return {true, '\a', 1, ""};  // 响铃
+            case 'b':
+                return {true, '\b', 1, ""};  // 退格
+            case 'f':
+                return {true, '\f', 1, ""};  // 换页
             case 'n':
-                return {true, '\n', 1, ""};
-            case 't':
-                return {true, '\t', 1, ""};
+                return {true, '\n', 1, ""};  // 换行
             case 'r':
-                return {true, '\r', 1, ""};
+                return {true, '\r', 1, ""};  // 回车
+            case 't':
+                return {true, '\t', 1, ""};  // 水平制表符
+            case 'v':
+                return {true, '\v', 1, ""};  // 垂直制表符
             case '\\':
-                return {true, '\\', 1, ""};
+                return {true, '\\', 1, ""};  // 反斜杠
             case '"':
-                return {true, '"', 1, ""};
+                return {true, '"', 1, ""};  // 双引号
             case '\'':
-                return {true, '\'', 1, ""};
-            case 'x':  // 十六进制转义序列
-                if (start + 2 >= input.length()) {
+                return {true, '\'', 1, ""};  // 单引号
+            case '?':
+                return {true, '?', 1, ""};  // 问号
+            case 'x':                       // 十六进制转义序列
+                if (start + 1 >= input.length()) {
                     return {false, 0, 0, "Incomplete hex escape sequence"};
                 }
-                return parseHexEscape(input, start + 1, 2);
+                return parseHexEscape(input, start + 1, HEX_ESCAPE_LENGTH);
             case 'u':  // Unicode转义序列
+                if (start + 1 >= input.length()) {
+                    return {false, 0, 0, "Incomplete Unicode escape sequence"};
+                }
                 return parseUnicodeEscape(input, start + 1);
             case 'U':  // 扩展Unicode转义序列
+                if (start + 1 >= input.length()) {
+                    return {false, 0, 0, "Incomplete extended Unicode escape sequence"};
+                }
                 return parseExtendedUnicodeEscape(input, start + 1);
             default:
                 // 检查八进制转义序列
-                if (c >= '0' && c <= '7') {
+                if (isOctalDigit(c)) {
                     return parseOctalEscape(input, start);
                 }
-                return {false, 0, 0, "Invalid escape sequence"};
-        }
-    }
-
-    UnicodeEscape::EscapeResult UnicodeEscape::parseBasicEscape(char c) {
-        switch (c) {
-            case 'n':
-                return {true, '\n', 1, ""};
-            case 't':
-                return {true, '\t', 1, ""};
-            case 'r':
-                return {true, '\r', 1, ""};
-            case '\\':
-                return {true, '\\', 1, ""};
-            case '"':
-                return {true, '"', 1, ""};
-            case '\'':
-                return {true, '\'', 1, ""};
-            default:
-                return {false, 0, 0, "Invalid basic escape sequence"};
+                return {false, 0, 0, "Invalid escape sequence character: " + std::string(1, c)};
         }
     }
 
     UnicodeEscape::EscapeResult UnicodeEscape::parseHexEscape(const std::string& input, size_t start, size_t length) {
         if (start + length > input.length()) {
-            return {false, 0, 0, "Incomplete hex escape sequence"};
+            return {false, 0, 0, "Incomplete hex escape sequence: expected " + std::to_string(length) + " digits"};
         }
 
         uint32_t value = 0;
         for (size_t i = 0; i < length; ++i) {
             char c = input[start + i];
             if (!isHexDigit(c)) {
-                return {false, 0, i, "Invalid hex digit"};
+                return {false, 0, i, "Invalid hex digit: " + std::string(1, c)};
             }
             value = (value << 4) | hexDigitToValue(c);
         }
 
-        return {true, value, length + 1, ""};  // +1 for 'x'
+        return {true, value, length + 1, ""};  // +1 for 'x'/'u'/'U'
     }
 
     UnicodeEscape::EscapeResult UnicodeEscape::parseOctalEscape(const std::string& input, size_t start) {
@@ -96,46 +104,62 @@ namespace rp::frontend::unicode {
             if (!isOctalDigit(c)) {
                 break;
             }
-            value = (value << 3) | octalDigitToValue(c);
+            uint32_t newValue = (value << 3) | octalDigitToValue(c);
+            if (newValue > 0xFF) {
+                break;  // 超出范围，停止读取
+            }
+            value = newValue;
             consumed++;
-        }
-
-        if (value > 0xFF) {
-            return {false, 0, consumed, "Octal escape sequence too large"};
         }
 
         return {true, value, consumed, ""};
     }
 
     UnicodeEscape::EscapeResult UnicodeEscape::parseUnicodeEscape(const std::string& input, size_t start) {
-        auto result = parseHexEscape(input, start, 4);
+        auto result = parseHexEscape(input, start, UNICODE_ESCAPE_LENGTH);
         if (result.success) {
             result.consumed += 1;  // 加上'u'的长度
             if (!UnicodeCore::isValidCodepoint(result.codepoint)) {
-                return {false, 0, result.consumed, "Invalid Unicode codepoint"};
+                return {false, 0, result.consumed, "Invalid Unicode codepoint: U+" + std::to_string(result.codepoint)};
             }
         }
         return result;
     }
 
     UnicodeEscape::EscapeResult UnicodeEscape::parseExtendedUnicodeEscape(const std::string& input, size_t start) {
-        auto result = parseHexEscape(input, start, 8);
+        auto result = parseHexEscape(input, start, EXTENDED_UNICODE_ESCAPE_LENGTH);
         if (result.success) {
             result.consumed += 1;  // 加上'U'的长度
             if (!UnicodeCore::isValidCodepoint(result.codepoint)) {
-                return {false, 0, result.consumed, "Invalid Unicode codepoint"};
+                return {false, 0, result.consumed, "Invalid Unicode codepoint: U+" + std::to_string(result.codepoint)};
             }
         }
         return result;
     }
 
     std::string UnicodeEscape::generateEscapeSequence(uint32_t codepoint) {
-        std::stringstream ss;
-        if (codepoint <= 0xFFFF) {
-            ss << "\\u" << std::hex << std::uppercase << std::setw(4) << std::setfill('0') << codepoint;
-        } else {
-            ss << "\\U" << std::hex << std::uppercase << std::setw(8) << std::setfill('0') << codepoint;
+        if (!UnicodeCore::isValidCodepoint(codepoint)) {
+            return "";  // 返回空字符串表示无效码点
         }
+
+        std::stringstream ss;
+        ss << std::hex << std::uppercase << std::setfill('0');
+
+        // 根据码点值选择合适的转义序列格式
+        if (codepoint < 0x20 || codepoint == 0x7F) {
+            // 控制字符使用\x格式
+            ss << "\\x" << std::setw(2) << codepoint;
+        } else if (codepoint <= 0xFF) {
+            // ASCII可打印字符和扩展ASCII使用\x格式
+            ss << "\\x" << std::setw(2) << codepoint;
+        } else if (codepoint <= 0xFFFF) {
+            // 基本多语言平面使用\u格式
+            ss << "\\u" << std::setw(4) << codepoint;
+        } else {
+            // 其他平面使用\U格式
+            ss << "\\U" << std::setw(8) << codepoint;
+        }
+
         return ss.str();
     }
 
@@ -146,7 +170,7 @@ namespace rp::frontend::unicode {
         }
 
         // 检查转义序列的开始
-        if (input[0] != '\\') {
+        if (input[0] != ESCAPE_CHAR) {
             error = "Escape sequence must start with '\\'";
             return false;
         }
@@ -164,6 +188,12 @@ namespace rp::frontend::unicode {
             return false;
         }
 
+        // 检查是否有多余的字符
+        if (result.consumed + 1 < input.length()) {
+            error = "Extra characters after escape sequence";
+            return false;
+        }
+
         return true;
     }
 
@@ -175,23 +205,26 @@ namespace rp::frontend::unicode {
         size_t pos = 0;
         size_t len = input.length();
 
-        // 查找反斜杠
+        // 查找反斜杠和换行符组合
         while (pos < len) {
-            if (input[pos] == '\\') {
-                // 检查是否是行末
+            if (input[pos] == ESCAPE_CHAR) {
                 if (pos + 1 >= len) {
+                    // 反斜杠在末尾
                     return {true, 0, pos + 1, ""};
                 }
 
-                // 检查下一个字符
                 char next = input[pos + 1];
                 if (next == '\n') {
+                    // 找到 \n
                     return {true, 0, pos + 2, ""};
                 } else if (next == '\r') {
-                    // 检查是否是\r\n
+                    // 检查是否是 \r\n
                     if (pos + 2 < len && input[pos + 2] == '\n') {
                         return {true, 0, pos + 3, ""};
                     }
+                    return {true, 0, pos + 2, ""};
+                } else if (isNewLine(next)) {
+                    // 其他换行符
                     return {true, 0, pos + 2, ""};
                 }
             }

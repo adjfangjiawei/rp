@@ -4,8 +4,8 @@ namespace rp::frontend::unicode {
 
     bool UnicodeCore::isValidCodepoint(uint32_t codepoint) {
         // Unicode标准规定的有效码点范围
-        return (codepoint <= 0x10FFFF) &&                      // 不超过最大Unicode码点
-               !(codepoint >= 0xD800 && codepoint <= 0xDFFF);  // 不在代理对范围内
+        return (codepoint <= UNICODE_MAX) &&                                 // 不超过最大Unicode码点
+               !(codepoint >= SURROGATE_MIN && codepoint <= SURROGATE_MAX);  // 不在代理对范围内
     }
 
     bool UnicodeCore::isValidUtf8FirstByte(unsigned char byte) {
@@ -25,20 +25,36 @@ namespace rp::frontend::unicode {
         return (byte & 0xC0) == 0x80;
     }
 
+    bool UnicodeCore::isOverlongEncoding(uint32_t codepoint, size_t length) {
+        // 检查是否使用了过长编码
+        switch (length) {
+            case 1:
+                return codepoint >= UTF8_2BYTE_MIN;
+            case 2:
+                return codepoint < UTF8_2BYTE_MIN;
+            case 3:
+                return codepoint < UTF8_3BYTE_MIN;
+            case 4:
+                return codepoint < UTF8_4BYTE_MIN;
+            default:
+                return true;
+        }
+    }
+
     UnicodeCore::Utf8SequenceInfo UnicodeCore::getUtf8SequenceInfo(const std::string &str, size_t start) {
         if (start >= str.length()) {
-            return {0, 0, false, "Invalid start position"};
+            return {0, 0, false, "Invalid start position: beyond string length"};
         }
 
         unsigned char first = static_cast<unsigned char>(str[start]);
         size_t length = getUtf8SequenceLength(first);
 
         if (length == 0) {
-            return {0, 0, false, "Invalid UTF-8 first byte"};
+            return {0, 0, false, "Invalid UTF-8 first byte: " + std::to_string(first)};
         }
 
         if (start + length > str.length()) {
-            return {0, 0, false, "Incomplete UTF-8 sequence"};
+            return {0, 0, false, "Incomplete UTF-8 sequence: expected " + std::to_string(length) + " bytes"};
         }
 
         uint32_t codepoint = 0;
@@ -51,14 +67,14 @@ namespace rp::frontend::unicode {
 
             case 2:
                 if (!isUtf8ContinuationByte(str[start + 1])) {
-                    return {0, 0, false, "Invalid continuation byte"};
+                    return {0, 0, false, "Invalid continuation byte in 2-byte sequence"};
                 }
                 codepoint = ((first & 0x1F) << 6) | (static_cast<unsigned char>(str[start + 1]) & 0x3F);
                 break;
 
             case 3:
                 if (!isUtf8ContinuationByte(str[start + 1]) || !isUtf8ContinuationByte(str[start + 2])) {
-                    return {0, 0, false, "Invalid continuation byte"};
+                    return {0, 0, false, "Invalid continuation byte in 3-byte sequence"};
                 }
                 codepoint = ((first & 0x0F) << 12) | ((static_cast<unsigned char>(str[start + 1]) & 0x3F) << 6) |
                             (static_cast<unsigned char>(str[start + 2]) & 0x3F);
@@ -67,7 +83,7 @@ namespace rp::frontend::unicode {
             case 4:
                 if (!isUtf8ContinuationByte(str[start + 1]) || !isUtf8ContinuationByte(str[start + 2]) ||
                     !isUtf8ContinuationByte(str[start + 3])) {
-                    return {0, 0, false, "Invalid continuation byte"};
+                    return {0, 0, false, "Invalid continuation byte in 4-byte sequence"};
                 }
                 codepoint = ((first & 0x07) << 18) | ((static_cast<unsigned char>(str[start + 1]) & 0x3F) << 12) |
                             ((static_cast<unsigned char>(str[start + 2]) & 0x3F) << 6) |
@@ -75,20 +91,25 @@ namespace rp::frontend::unicode {
                 break;
         }
 
+        // 检查过长编码
+        if (isOverlongEncoding(codepoint, length)) {
+            return {0, 0, false, "Overlong UTF-8 encoding detected"};
+        }
+
         // 验证解码出的码点是否有效
         if (!isValidCodepoint(codepoint)) {
-            return {0, 0, false, "Invalid Unicode codepoint"};
+            return {0, 0, false, "Invalid Unicode codepoint: " + std::to_string(codepoint)};
         }
 
         return {length, codepoint, true, ""};
     }
 
     size_t UnicodeCore::getUtf8ByteCount(uint32_t codepoint) {
-        if (codepoint < 0x80) return 1;
-        if (codepoint < 0x800) return 2;
-        if (codepoint < 0x10000) return 3;
-        if (codepoint <= 0x10FFFF) return 4;
-        return 0;  // 无效码点
+        if (!isValidCodepoint(codepoint)) return 0;  // 无效码点
+        if (codepoint < UTF8_2BYTE_MIN) return 1;
+        if (codepoint < UTF8_3BYTE_MIN) return 2;
+        if (codepoint < UTF8_4BYTE_MIN) return 3;
+        return 4;
     }
 
     size_t UnicodeCore::getUtf8SequenceLength(unsigned char firstByte) {

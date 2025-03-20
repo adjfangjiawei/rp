@@ -1,54 +1,103 @@
 #include "UnicodeProcessing.h"
 
+#include <unordered_map>
 #include <vector>
 
 #include "../Core/UnicodeCore.h"
-#include "../Scanner/UTF8Scanner.h"
+#include "../Encoding/UnicodeEncoding.h"
 
 namespace rp::frontend::unicode {
+
+    namespace {
+        // 使用unordered_map提高查找效率
+        std::unordered_map<uint32_t, uint32_t> createUpperMap() {
+            std::unordered_map<uint32_t, uint32_t> map;
+            // Basic Latin
+            for (uint32_t i = 'a'; i <= 'z'; ++i) {
+                map[i] = i - 'a' + 'A';
+            }
+            // Latin-1 Supplement
+            map[0x00E0] = 0x00C0;  // à -> À
+            map[0x00E1] = 0x00C1;  // á -> Á
+            map[0x00E2] = 0x00C2;  // â -> Â
+            map[0x00E3] = 0x00C3;  // ã -> Ã
+            map[0x00E4] = 0x00C4;  // ä -> Ä
+            map[0x00E5] = 0x00C5;  // å -> Å
+            // 添加更多映射...
+            return map;
+        }
+
+        std::unordered_map<uint32_t, uint32_t> createLowerMap() {
+            std::unordered_map<uint32_t, uint32_t> map;
+            // Basic Latin
+            for (uint32_t i = 'A'; i <= 'Z'; ++i) {
+                map[i] = i - 'A' + 'a';
+            }
+            // Latin-1 Supplement
+            map[0x00C0] = 0x00E0;  // À -> à
+            map[0x00C1] = 0x00E1;  // Á -> á
+            map[0x00C2] = 0x00E2;  // Â -> â
+            map[0x00C3] = 0x00E3;  // Ã -> ã
+            map[0x00C4] = 0x00E4;  // Ä -> ä
+            map[0x00C5] = 0x00E5;  // Å -> å
+            // 添加更多映射...
+            return map;
+        }
+
+        // 静态映射表
+        const std::unordered_map<uint32_t, uint32_t> upperCaseMap = createUpperMap();
+        const std::unordered_map<uint32_t, uint32_t> lowerCaseMap = createLowerMap();
+
+    }  // namespace
+
+    // 组合字符映射
+    struct CombiningPair {
+        uint32_t base;
+        uint32_t combining;
+
+        bool operator==(const CombiningPair &other) const { return base == other.base && combining == other.combining; }
+    };
+}  // namespace rp::frontend::unicode
+
+namespace std {
+    template <>
+    struct hash<rp::frontend::unicode::CombiningPair> {
+        size_t operator()(const rp::frontend::unicode::CombiningPair &pair) const {
+            return hash<uint64_t>()((static_cast<uint64_t>(pair.base) << 32) | pair.combining);
+        }
+    };
+}  // namespace std
+
+namespace rp::frontend::unicode {
+    namespace {
+        std::unordered_map<CombiningPair, uint32_t> createCombiningMap() {
+            std::unordered_map<CombiningPair, uint32_t> map;
+            map[{0x0041, 0x0300}] = 0x00C0;  // A + ` -> À
+            map[{0x0041, 0x0301}] = 0x00C1;  // A + ´ -> Á
+            map[{0x0041, 0x0302}] = 0x00C2;  // A + ˆ -> Â
+            // 添加更多组合...
+            return map;
+        }
+
+        const auto combiningMap = createCombiningMap();
+    }  // namespace
 
     UnicodeProcessing::CharacterResult UnicodeProcessing::processCharacter(const std::string &str, size_t start) {
         if (str.empty() || start >= str.length()) {
             return {false, 0, 0, "Empty input or invalid start position"};
         }
 
-        // 处理ASCII字符
-        unsigned char first = static_cast<unsigned char>(str[start]);
-        if (first < 0x80) {
-            return {true, first, 1, ""};
+        // 使用Core模块验证UTF-8序列
+        UnicodeCore::Utf8SequenceInfo info = UnicodeCore::getUtf8SequenceInfo(str, start);
+        if (!info.valid) {
+            return {false, 0, 0, info.error};
         }
 
-        // 处理UTF-8字符
-        return processUtf8Character(str, start);
+        return {true, info.codepoint, info.length, ""};
     }
 
     UnicodeProcessing::CharacterResult UnicodeProcessing::processUtf8Character(const std::string &str, size_t start) {
-        size_t bytesConsumed;
-        if (!validateUtf8Sequence(str, start, bytesConsumed)) {
-            return {false, 0, 0, "Invalid UTF-8 sequence"};
-        }
-
-        // 解码UTF-8序列
-        uint32_t codepoint = 0;
-        unsigned char first = static_cast<unsigned char>(str[start]);
-
-        if (first < 0x80) {
-            codepoint = first;
-        } else if ((first & 0xE0) == 0xC0) {
-            // 2字节序列
-            codepoint = ((first & 0x1F) << 6) | (static_cast<unsigned char>(str[start + 1]) & 0x3F);
-        } else if ((first & 0xF0) == 0xE0) {
-            // 3字节序列
-            codepoint = ((first & 0x0F) << 12) | ((static_cast<unsigned char>(str[start + 1]) & 0x3F) << 6) |
-                        (static_cast<unsigned char>(str[start + 2]) & 0x3F);
-        } else if ((first & 0xF8) == 0xF0) {
-            // 4字节序列
-            codepoint = ((first & 0x07) << 18) | ((static_cast<unsigned char>(str[start + 1]) & 0x3F) << 12) |
-                        ((static_cast<unsigned char>(str[start + 2]) & 0x3F) << 6) |
-                        (static_cast<unsigned char>(str[start + 3]) & 0x3F);
-        }
-
-        return {true, codepoint, bytesConsumed, ""};
+        return processCharacter(str, start);
     }
 
     UnicodeProcessing::StringResult UnicodeProcessing::processUtf8String(const std::string &str,
@@ -63,78 +112,39 @@ namespace rp::frontend::unicode {
         }
 
         std::string result;
+        result.reserve(length);  // 预分配空间
         size_t pos = start;
         size_t endPos = start + length;
 
         while (pos < endPos) {
-            size_t bytesConsumed;
-            if (!validateUtf8Sequence(str, pos, bytesConsumed)) {
-                return {false, "", pos - start, "Invalid UTF-8 sequence at position " + std::to_string(pos)};
+            auto charResult = processCharacter(str, pos);
+            if (!charResult.success) {
+                return {false, "", pos - start, charResult.error};
             }
 
-            // 复制有效的UTF-8序列到结果字符串
-            result.append(str.substr(pos, bytesConsumed));
-            pos += bytesConsumed;
+            // 使用Encoding模块进行UTF-8编码
+            result += UnicodeEncoding::codePointToUtf8(charResult.value);
+            pos += charResult.consumed;
         }
 
         return {true, result, pos - start, ""};
     }
 
     bool UnicodeProcessing::validateUtf8Sequence(const std::string &str, size_t start, size_t &bytesConsumed) {
-        if (str.empty() || start >= str.length()) {
-            bytesConsumed = 0;
-            return false;
-        }
-
-        unsigned char first = static_cast<unsigned char>(str[start]);
-        if (first < 0x80) {
-            // ASCII字符
-            bytesConsumed = 1;
-            return true;
-        }
-
-        // 确定UTF-8序列的长度
-        int expectedLength;
-        if ((first & 0xE0) == 0xC0)
-            expectedLength = 2;  // 110xxxxx
-        else if ((first & 0xF0) == 0xE0)
-            expectedLength = 3;  // 1110xxxx
-        else if ((first & 0xF8) == 0xF0)
-            expectedLength = 4;  // 11110xxx
-        else {
-            // 无效的UTF-8起始字节
-            bytesConsumed = 0;
-            return false;
-        }
-
-        // 检查是否有足够的字节
-        if (start + expectedLength > str.length()) {
-            bytesConsumed = 0;
-            return false;
-        }
-
-        // 验证后续字节
-        for (int i = 1; i < expectedLength; i++) {
-            unsigned char byte = static_cast<unsigned char>(str[start + i]);
-            if ((byte & 0xC0) != 0x80) {  // 不是10xxxxxx格式
-                bytesConsumed = 0;
-                return false;
-            }
-        }
-
-        bytesConsumed = expectedLength;
-        return true;
+        UnicodeCore::Utf8SequenceInfo info = UnicodeCore::getUtf8SequenceInfo(str, start);
+        bytesConsumed = info.valid ? info.length : 0;
+        return info.valid;
     }
 
     bool UnicodeProcessing::validateUtf8String(const std::string &str, std::string &error) {
         size_t pos = 0;
         while (pos < str.length()) {
-            size_t bytesConsumed;
-            if (!validateUtf8Sequence(str, pos, bytesConsumed)) {
-                error = "Invalid UTF-8 sequence at position " + std::to_string(pos);
+            UnicodeCore::Utf8SequenceInfo info = UnicodeCore::getUtf8SequenceInfo(str, pos);
+            if (!info.valid) {
+                error = "Invalid UTF-8 sequence at position " + std::to_string(pos) + ": " + info.error;
                 return false;
             }
-            pos += bytesConsumed;
+            pos += info.length;
         }
         return true;
     }
@@ -143,10 +153,10 @@ namespace rp::frontend::unicode {
         size_t length = 0;
         size_t pos = 0;
         while (pos < str.length()) {
-            size_t bytesConsumed;
-            if (validateUtf8Sequence(str, pos, bytesConsumed)) {
+            UnicodeCore::Utf8SequenceInfo info = UnicodeCore::getUtf8SequenceInfo(str, pos);
+            if (info.valid) {
                 length++;
-                pos += bytesConsumed;
+                pos += info.length;
             } else {
                 pos++;  // 跳过无效字节
             }
@@ -159,10 +169,10 @@ namespace rp::frontend::unicode {
             return std::string_view();
         }
 
-        size_t bytesConsumed;
-        if (validateUtf8Sequence(str, pos, bytesConsumed)) {
-            std::string_view result(str.data() + pos, bytesConsumed);
-            pos += bytesConsumed;
+        UnicodeCore::Utf8SequenceInfo info = UnicodeCore::getUtf8SequenceInfo(str, pos);
+        if (info.valid) {
+            std::string_view result(str.data() + pos, info.length);
+            pos += info.length;
             return result;
         }
 
@@ -178,63 +188,44 @@ namespace rp::frontend::unicode {
     }
 
     int UnicodeProcessing::getCharWidth(uint32_t codepoint) {
-        // 实现基本的字符宽度计算
-        if (codepoint == 0) return 0;
-        if (codepoint < 0x20) return 0;                            // 控制字符
-        if (codepoint < 0x7F) return 1;                            // ASCII
-        if (codepoint < 0xA0) return 0;                            // C1控制字符
-        if (codepoint >= 0x1100 && codepoint <= 0x115F) return 2;  // Hangul Jamo
-        if (codepoint >= 0x2E80 && codepoint <= 0x9FFF) return 2;  // CJK
-        if (codepoint >= 0xAC00 && codepoint <= 0xD7A3) return 2;  // Hangul Syllables
-        if (codepoint >= 0xF900 && codepoint <= 0xFAFF) return 2;  // CJK Compatibility Ideographs
-        if (codepoint >= 0xFE10 && codepoint <= 0xFE19) return 2;  // Vertical Forms
-        if (codepoint >= 0xFE30 && codepoint <= 0xFE6F) return 2;  // CJK Compatibility Forms
-        if (codepoint >= 0xFF00 && codepoint <= 0xFF60) return 2;  // Fullwidth Forms
-        if (codepoint >= 0xFFE0 && codepoint <= 0xFFE6) return 2;  // Fullwidth Forms
-        return 1;
-    }
-
-    // Unicode正规化和转换函数的基本实现
-    // Unicode组合字符数据结构
-    struct CombiningCharacter {
-        uint32_t base;       // 基础字符
-        uint32_t combining;  // 组合字符
-        uint32_t composed;   // 组合后的字符
-    };
-
-    // 部分常用的组合字符映射（这只是一个示例，实际需要更完整的数据）
-    static const CombiningCharacter combiningChars[] = {
-        // Latin-1 补充
-        {0x0041, 0x0300, 0x00C0},  // A + ` -> À
-        {0x0041, 0x0301, 0x00C1},  // A + ´ -> Á
-        {0x0041, 0x0302, 0x00C2},  // A + ˆ -> Â
-        {0x0041, 0x0303, 0x00C3},  // A + ˜ -> Ã
-        {0x0041, 0x0308, 0x00C4},  // A + ¨ -> Ä
-        {0x0041, 0x030A, 0x00C5},  // A + ˚ -> Å
-        {0x0045, 0x0300, 0x00C8},  // E + ` -> È
-        {0x0045, 0x0301, 0x00C9},  // E + ´ -> É
-        {0x0045, 0x0302, 0x00CA},  // E + ˆ -> Ê
-        {0x0045, 0x0308, 0x00CB},  // E + ¨ -> Ë
-        // 可以添加更多组合字符映射
-    };
-
-    // 查找组合字符的辅助函数
-    static uint32_t findComposedChar(uint32_t base, uint32_t combining) {
-        for (const auto &combo : combiningChars) {
-            if (combo.base == base && combo.combining == combining) {
-                return combo.composed;
-            }
+        if (!UnicodeCore::isValidCodepoint(codepoint)) {
+            return 0;
         }
-        return 0;  // 未找到组合
+
+        // 控制字符和特殊字符
+        if (codepoint < 0x20 || (codepoint >= 0x7F && codepoint < 0xA0)) {
+            return 0;
+        }
+
+        // ASCII字符
+        if (codepoint < 0x7F) {
+            return 1;
+        }
+
+        // 东亚宽字符范围
+        if ((codepoint >= 0x1100 && codepoint <= 0x115F) ||  // Hangul Jamo
+            (codepoint >= 0x2E80 && codepoint <= 0x9FFF) ||  // CJK
+            (codepoint >= 0xAC00 && codepoint <= 0xD7A3) ||  // Hangul Syllables
+            (codepoint >= 0xF900 && codepoint <= 0xFAFF) ||  // CJK Compatibility Ideographs
+            (codepoint >= 0xFE10 && codepoint <= 0xFE19) ||  // Vertical Forms
+            (codepoint >= 0xFE30 && codepoint <= 0xFE6F) ||  // CJK Compatibility Forms
+            (codepoint >= 0xFF00 && codepoint <= 0xFF60) ||  // Fullwidth Forms
+            (codepoint >= 0xFFE0 && codepoint <= 0xFFE6)) {  // Fullwidth Forms
+            return 2;
+        }
+
+        // 其他Unicode字符
+        return 1;
     }
 
     std::string UnicodeProcessing::normalize(const std::string &str, bool compose) {
         std::vector<uint32_t> codepoints;
+        codepoints.reserve(str.length());  // 预分配空间
 
-        // 首先将UTF-8字符串转换为码点序列
+        // 解码UTF-8字符串
         size_t pos = 0;
         while (pos < str.length()) {
-            CharacterResult result = processCharacter(str, pos);
+            auto result = processCharacter(str, pos);
             if (result.success) {
                 codepoints.push_back(result.value);
                 pos += result.consumed;
@@ -244,13 +235,16 @@ namespace rp::frontend::unicode {
         }
 
         if (compose) {
-            // NFC: 规范组合
+            // 执行组合
             std::vector<uint32_t> composed;
-            for (size_t i = 0; i < codepoints.size(); i++) {
+            composed.reserve(codepoints.size());
+
+            for (size_t i = 0; i < codepoints.size(); ++i) {
                 if (i + 1 < codepoints.size()) {
-                    uint32_t composedChar = findComposedChar(codepoints[i], codepoints[i + 1]);
-                    if (composedChar != 0) {
-                        composed.push_back(composedChar);
+                    CombiningPair pair = {codepoints[i], codepoints[i + 1]};
+                    auto it = combiningMap.find(pair);
+                    if (it != combiningMap.end()) {
+                        composed.push_back(it->second);
                         i++;  // 跳过下一个字符
                         continue;
                     }
@@ -260,114 +254,39 @@ namespace rp::frontend::unicode {
             codepoints = std::move(composed);
         }
 
-        // 将码点序列转换回UTF-8字符串
+        // 编码回UTF-8
         std::string result;
-        for (uint32_t codepoint : codepoints) {
-            if (codepoint < 0x80) {
-                result += static_cast<char>(codepoint);
-            } else if (codepoint < 0x800) {
-                result += static_cast<char>(0xC0 | (codepoint >> 6));
-                result += static_cast<char>(0x80 | (codepoint & 0x3F));
-            } else if (codepoint < 0x10000) {
-                result += static_cast<char>(0xE0 | (codepoint >> 12));
-                result += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
-                result += static_cast<char>(0x80 | (codepoint & 0x3F));
-            } else {
-                result += static_cast<char>(0xF0 | (codepoint >> 18));
-                result += static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F));
-                result += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
-                result += static_cast<char>(0x80 | (codepoint & 0x3F));
-            }
+        result.reserve(str.length());
+        for (uint32_t cp : codepoints) {
+            result += UnicodeEncoding::codePointToUtf8(cp);
         }
 
         return result;
     }
 
-    // Unicode大小写映射数据结构
-    struct CaseMapping {
-        uint32_t from;
-        uint32_t to;
-    };
-
-    // 部分常用的大小写映射（这只是一个示例，实际需要更完整的数据）
-    static const CaseMapping upperCaseMap[] = {
-        // Latin-1
-        {0x00E0, 0x00C0},  // à -> À
-        {0x00E1, 0x00C1},  // á -> Á
-        {0x00E2, 0x00C2},  // â -> Â
-        {0x00E3, 0x00C3},  // ã -> Ã
-        {0x00E4, 0x00C4},  // ä -> Ä
-        {0x00E5, 0x00C5},  // å -> Å
-        // 可以添加更多映射
-    };
-
-    static const CaseMapping lowerCaseMap[] = {
-        // Latin-1
-        {0x00C0, 0x00E0},  // À -> à
-        {0x00C1, 0x00E1},  // Á -> á
-        {0x00C2, 0x00E2},  // Â -> â
-        {0x00C3, 0x00E3},  // Ã -> ã
-        {0x00C4, 0x00E4},  // Ä -> ä
-        {0x00C5, 0x00E5},  // Å -> å
-        // 可以添加更多映射
-    };
-
-    // 在映射表中查找对应字符的辅助函数
-    static uint32_t findCaseMapping(uint32_t codepoint, const CaseMapping *map, size_t mapSize) {
-        for (size_t i = 0; i < mapSize; i++) {
-            if (map[i].from == codepoint) {
-                return map[i].to;
-            }
-        }
-        return 0;  // 未找到映射
-    }
-
     std::string UnicodeProcessing::toUpper(const std::string &str) {
         std::vector<uint32_t> codepoints;
+        codepoints.reserve(str.length());
 
-        // 转换为码点序列
+        // 解码UTF-8字符串
         size_t pos = 0;
         while (pos < str.length()) {
-            CharacterResult result = processCharacter(str, pos);
+            auto result = processCharacter(str, pos);
             if (result.success) {
                 uint32_t cp = result.value;
-
-                // ASCII转换
-                if (cp >= 'a' && cp <= 'z') {
-                    cp = cp - 'a' + 'A';
-                } else {
-                    // Unicode转换
-                    uint32_t mapped = findCaseMapping(cp, upperCaseMap, sizeof(upperCaseMap) / sizeof(CaseMapping));
-                    if (mapped != 0) {
-                        cp = mapped;
-                    }
-                }
-
-                codepoints.push_back(cp);
+                auto it = upperCaseMap.find(cp);
+                codepoints.push_back(it != upperCaseMap.end() ? it->second : cp);
                 pos += result.consumed;
             } else {
                 pos++;
             }
         }
 
-        // 转换回UTF-8
+        // 编码回UTF-8
         std::string result;
+        result.reserve(str.length());
         for (uint32_t cp : codepoints) {
-            if (cp < 0x80) {
-                result += static_cast<char>(cp);
-            } else if (cp < 0x800) {
-                result += static_cast<char>(0xC0 | (cp >> 6));
-                result += static_cast<char>(0x80 | (cp & 0x3F));
-            } else if (cp < 0x10000) {
-                result += static_cast<char>(0xE0 | (cp >> 12));
-                result += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
-                result += static_cast<char>(0x80 | (cp & 0x3F));
-            } else {
-                result += static_cast<char>(0xF0 | (cp >> 18));
-                result += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
-                result += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
-                result += static_cast<char>(0x80 | (cp & 0x3F));
-            }
+            result += UnicodeEncoding::codePointToUtf8(cp);
         }
 
         return result;
@@ -375,50 +294,27 @@ namespace rp::frontend::unicode {
 
     std::string UnicodeProcessing::toLower(const std::string &str) {
         std::vector<uint32_t> codepoints;
+        codepoints.reserve(str.length());
 
-        // 转换为码点序列
+        // 解码UTF-8字符串
         size_t pos = 0;
         while (pos < str.length()) {
-            CharacterResult result = processCharacter(str, pos);
+            auto result = processCharacter(str, pos);
             if (result.success) {
                 uint32_t cp = result.value;
-
-                // ASCII转换
-                if (cp >= 'A' && cp <= 'Z') {
-                    cp = cp - 'A' + 'a';
-                } else {
-                    // Unicode转换
-                    uint32_t mapped = findCaseMapping(cp, lowerCaseMap, sizeof(lowerCaseMap) / sizeof(CaseMapping));
-                    if (mapped != 0) {
-                        cp = mapped;
-                    }
-                }
-
-                codepoints.push_back(cp);
+                auto it = lowerCaseMap.find(cp);
+                codepoints.push_back(it != lowerCaseMap.end() ? it->second : cp);
                 pos += result.consumed;
             } else {
                 pos++;
             }
         }
 
-        // 转换回UTF-8
+        // 编码回UTF-8
         std::string result;
+        result.reserve(str.length());
         for (uint32_t cp : codepoints) {
-            if (cp < 0x80) {
-                result += static_cast<char>(cp);
-            } else if (cp < 0x800) {
-                result += static_cast<char>(0xC0 | (cp >> 6));
-                result += static_cast<char>(0x80 | (cp & 0x3F));
-            } else if (cp < 0x10000) {
-                result += static_cast<char>(0xE0 | (cp >> 12));
-                result += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
-                result += static_cast<char>(0x80 | (cp & 0x3F));
-            } else {
-                result += static_cast<char>(0xF0 | (cp >> 18));
-                result += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
-                result += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
-                result += static_cast<char>(0x80 | (cp & 0x3F));
-            }
+            result += UnicodeEncoding::codePointToUtf8(cp);
         }
 
         return result;
@@ -428,63 +324,34 @@ namespace rp::frontend::unicode {
         if (str.empty()) return str;
 
         std::vector<uint32_t> codepoints;
+        codepoints.reserve(str.length());
         bool firstChar = true;
 
-        // 转换为码点序列
+        // 解码UTF-8字符串
         size_t pos = 0;
         while (pos < str.length()) {
-            CharacterResult result = processCharacter(str, pos);
+            auto result = processCharacter(str, pos);
             if (result.success) {
                 uint32_t cp = result.value;
-
                 if (firstChar) {
-                    // 第一个字符转换为大写
-                    if (cp >= 'a' && cp <= 'z') {
-                        cp = cp - 'a' + 'A';
-                    } else {
-                        uint32_t mapped = findCaseMapping(cp, upperCaseMap, sizeof(upperCaseMap) / sizeof(CaseMapping));
-                        if (mapped != 0) {
-                            cp = mapped;
-                        }
-                    }
+                    auto it = upperCaseMap.find(cp);
+                    codepoints.push_back(it != upperCaseMap.end() ? it->second : cp);
                     firstChar = false;
                 } else {
-                    // 其他字符转换为小写
-                    if (cp >= 'A' && cp <= 'Z') {
-                        cp = cp - 'A' + 'a';
-                    } else {
-                        uint32_t mapped = findCaseMapping(cp, lowerCaseMap, sizeof(lowerCaseMap) / sizeof(CaseMapping));
-                        if (mapped != 0) {
-                            cp = mapped;
-                        }
-                    }
+                    auto it = lowerCaseMap.find(cp);
+                    codepoints.push_back(it != lowerCaseMap.end() ? it->second : cp);
                 }
-
-                codepoints.push_back(cp);
                 pos += result.consumed;
             } else {
                 pos++;
             }
         }
 
-        // 转换回UTF-8
+        // 编码回UTF-8
         std::string result;
+        result.reserve(str.length());
         for (uint32_t cp : codepoints) {
-            if (cp < 0x80) {
-                result += static_cast<char>(cp);
-            } else if (cp < 0x800) {
-                result += static_cast<char>(0xC0 | (cp >> 6));
-                result += static_cast<char>(0x80 | (cp & 0x3F));
-            } else if (cp < 0x10000) {
-                result += static_cast<char>(0xE0 | (cp >> 12));
-                result += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
-                result += static_cast<char>(0x80 | (cp & 0x3F));
-            } else {
-                result += static_cast<char>(0xF0 | (cp >> 18));
-                result += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
-                result += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
-                result += static_cast<char>(0x80 | (cp & 0x3F));
-            }
+            result += UnicodeEncoding::codePointToUtf8(cp);
         }
 
         return result;

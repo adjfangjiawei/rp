@@ -36,6 +36,13 @@ namespace rp::frontend::unicode {
         // UTF-8错误处理方法
         void skipInvalidUTF8();
 
+        // UTF-8扫描方法
+        bool tryPeekCodepoint(uint32_t& codepoint) const;
+        size_t lookAhead(size_t n) const;
+        std::string peekString(size_t length) const;
+        bool skipUntil(uint32_t targetCodepoint);
+        std::string collectUntil(uint32_t targetCodepoint);
+
       protected:
         // 内部扫描方法
         void reportInvalidUTF8(const std::string& message);
