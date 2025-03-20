@@ -2,6 +2,7 @@
 
 #include <cctype>
 #include <sstream>
+#include <string>
 
 #include "Frontend/Parser/Lexer/Unicode/Unicode.h"
 
@@ -170,7 +171,6 @@ namespace rp {
                 }
             } else {
                 // 处理普通字符或UTF-8字符
-                size_t utf8Start = pos;
                 size_t bytesConsumed;
                 std::string content;
 
@@ -207,7 +207,9 @@ namespace rp {
             // 检查字符字面量长度
             size_t contentLength = pos - startPos - 2;     // 减去两个引号
             if (!isEscapeSequence && contentLength > 4) {  // UTF-8字符最多4字节
-                error = "Character literal too long";
+                error = "字符字面量过长，字符字面量有" + std::to_string(contentLength) +
+                        "个字节长度，但是Unicode字符字面量最多4个字节，字符串字面量的内容为" +
+                        input.substr(startPos + 1, pos - startPos - 2);
                 return false;
             }
 

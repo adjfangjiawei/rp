@@ -7,6 +7,7 @@
 
 #include "Frontend/Diagnostic/Diagnostic.h"
 #include "Frontend/Parser/Lexer/MainLexer/Lexer.h"
+#include "Frontend/Parser/Lexer/Token/TokenKind.h"
 
 using namespace rp::frontend;
 
@@ -42,13 +43,14 @@ int main() {
             break;
         }
         // 只打印字符串相关的token
-        if (token.getKind() == TokenKind::StringLiteral || token.getKind() == TokenKind::CharLiteral) {
+        if (token.getKind() == TokenKind::StringLiteral || token.getKind() == TokenKind::CharLiteral ||
+            token.getKind() == TokenKind::RawStringLiteral) {
             printToken(token);
             // 打印token的具体位置的上下文
-            std::string context = lexer.getErrorContext(token.getLine(), token.getColumn());
-            std::cout << "Context:\n" << context << "\n\n";
+            // std::string context = lexer.getErrorContext(token.getLine(), token.getColumn());
+            // std::cout << "Context:\n" << context << "\n\n";
         } else if (token.getKind() == TokenKind::Invalid) {
-            // std::cout << "Error: " << token.getErrorMessage() << std::endl;
+            std::cout << "Error: " << token.getErrorMessage() << std::endl;
         }
     }
 

@@ -1,237 +1,293 @@
+
 #include "RawStringProcessor.h"
 
+#include <iostream>
 #include <sstream>
 
+#include "Frontend/Parser/Lexer/LiteralsLexer/StringLiteralLexer/PrefixProcessor.h"
 #include "Frontend/Parser/Lexer/Unicode/Core/UnicodeCore.h"
 #include "Frontend/Parser/Lexer/Unicode/Encoding/UnicodeEncoding.h"
 #include "Frontend/Parser/Lexer/Unicode/Processing/UnicodeProcessing.h"
 #include "Frontend/Parser/Lexer/Unicode/Unicode.h"
 #include "StringLiteralUtils.h"
-
 namespace rp {
     namespace frontend {
 
+        void RawStringProcessor::updatePosition(RawPositionInfo& pos, char c) {
+            if (c == '\n' || c == '\r') {
+                pos.line++;
+                pos.column = 1;
+            } else {
+                pos.column++;
+            }
+        }
+
         RawStringResult RawStringProcessor::processRawStringLiteral(const std::string& source,
-                                                                    size_t& currentPos,
+                                                                    size_t startPos,
+                                                                    StringPrefix prefix,
                                                                     const SourceLocation& startLoc) {
             RawStringResult result;
             result.success = false;
             result.hasWarnings = false;
-            result.errorPosition = currentPos;
+            result.consumed = 0;
+            result.token = Token(TokenKind::Invalid, startLoc.line, startLoc.column, startLoc.filename);
+
+            // 初始化位置信息
+            RawPositionInfo currentPos(startLoc.line, startLoc.column);
 
             // 检查基本条件
-            if (currentPos >= source.length()) {
+            if (startPos >= source.length()) {
                 result.error = "原始字符串不完整";
-                result.token = Token(TokenKind::Invalid);
+                result.errorPosition = startPos;
+                result.endPos = currentPos;
                 return result;
             }
 
             // 检查开始引号
-            if (source[currentPos] != '"') {
+            if (source[startPos] != '"') {
                 result.error = "原始字符串必须以 R\" 开始";
-                result.token = Token(TokenKind::Invalid);
+                result.errorPosition = startPos;
+                result.endPos = currentPos;
                 return result;
             }
-            currentPos++;
+            updatePosition(currentPos, '"');
 
             // 解析分隔符
-            std::string delimiter;
-            bool foundOpenParen = false;
-            size_t delimiterStart = currentPos;
-
-            while (currentPos < source.length()) {
-                char c = source[currentPos];
-                if (c == '(') {
-                    foundOpenParen = true;
-                    currentPos++;
-                    break;
-                }
-
-                if (!isValidDelimiter(std::string(1, c))) {
-                    result.error = "无效的原始字符串分隔符字符: '" + std::string(1, c) + "'";
-                    result.token = Token(TokenKind::Invalid);
-                    return result;
-                }
-
-                delimiter += c;
-                currentPos++;
-
-                if (delimiter.length() > MAX_DELIMITER_LENGTH) {
-                    result.error = "原始字符串分隔符过长（最大长度为" + std::to_string(MAX_DELIMITER_LENGTH) + "）";
-                    result.token = Token(TokenKind::Invalid);
-                    return result;
-                }
-            }
-
-            if (!foundOpenParen) {
-                result.error = "原始字符串缺少开始括号";
-                result.token = Token(TokenKind::Invalid);
+            auto delimiterResult = parseDelimiter(source, startPos + 1, currentPos);
+            if (!delimiterResult.success) {
+                result.error = delimiterResult.error;
+                result.errorPosition = startPos + delimiterResult.consumed;
+                result.consumed = delimiterResult.consumed;
+                result.endPos = delimiterResult.newPos;
                 return result;
             }
 
-            // 收集字符串内容
-            std::string content;
-            content.reserve(INITIAL_BUFFER_SIZE);
-            size_t lineCount = 0;
-            size_t endPos;
+            size_t contentStart = startPos + 1 + delimiterResult.consumed;
+            currentPos = delimiterResult.newPos;
 
-            size_t contentStart = currentPos;
-            bool foundClosing = false;
-
-            while (currentPos < source.length()) {
-                // 检查结束序列
-                if (findClosingSequence(source, currentPos, delimiter, endPos)) {
-                    foundClosing = true;
-                    // 提取内容（不包括结束序列）
-                    content = source.substr(contentStart, currentPos - contentStart);
-                    currentPos = endPos;
-                    break;
-                }
-
-                // 处理换行符
-                if (source[currentPos] == '\n' || source[currentPos] == '\r') {
-                    lineCount++;
-                    if (lineCount > MAX_LINES) {
-                        result.error = "原始字符串超过最大行数限制（" + std::to_string(MAX_LINES) + "行）";
-                        result.token = Token(TokenKind::Invalid);
-                        return result;
-                    }
-                }
-
-                // 处理UTF-8字符
-                if (static_cast<unsigned char>(source[currentPos]) >= 0x80) {
-                    if (!processUTF8Char(source, currentPos, content, result.warnings)) {
-                        result.hasWarnings = true;
-                    }
-                } else {
-                    currentPos++;
-                }
-            }
-
-            if (!foundClosing) {
-                result.error = "原始字符串未找到匹配的结束序列 )" + delimiter + "\"";
-                result.token = Token(TokenKind::Invalid);
+            // 查找结束序列
+            auto closingResult = findClosingSequence(source, contentStart, delimiterResult.delimiter, currentPos);
+            if (!closingResult.success) {
+                result.error = closingResult.error;
+                result.errorPosition = contentStart + closingResult.consumed;
+                result.consumed = contentStart - startPos + closingResult.consumed;
+                result.endPos = closingResult.newPos;
                 return result;
             }
 
-            // 验证最终内容
-            std::string validationError;
-            if (!validateContent(content, validationError, result.warnings)) {
-                if (!validationError.empty()) {
-                    result.warnings.push_back(validationError);
-                    result.hasWarnings = true;
+            // 验证内容
+            std::string contentError;
+            if (!validateContent(closingResult.content, contentError, result.warnings)) {
+                result.hasWarnings = true;
+                if (!contentError.empty()) {
+                    result.warnings.push_back(contentError);
                 }
             }
 
             // 创建成功的Token
-            result.token = Token(TokenKind::RawStringLiteral);
-            result.token.setText(content);
-            result.token.line = static_cast<unsigned int>(startLoc.line);
-            result.token.column = static_cast<unsigned int>(startLoc.column);
+            result.token = Token(TokenKind::RawStringLiteral, startLoc.line, startLoc.column, startLoc.filename);
+            result.token.setText(source.substr(contentStart, closingResult.contentConsumed));
+            result.token.setStringInfo(true, delimiterResult.delimiter);
             result.success = true;
-
-            // 设置原始字符串信息
-            result.token.setStringInfo(true, delimiter);
+            result.consumed = contentStart + closingResult.consumed - startPos;
+            result.endPos = closingResult.newPos;
 
             return result;
         }
 
-        bool RawStringProcessor::isValidDelimiter(const std::string& delimiter) {
-            for (char c : delimiter) {
-                if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_')) {
-                    return false;
+        DelimiterResult RawStringProcessor::parseDelimiter(const std::string& source,
+                                                           size_t startPos,
+                                                           RawPositionInfo& currentPos) {
+            DelimiterResult result;
+            result.success = false;
+            result.consumed = 0;
+            result.newPos = currentPos;
+
+            size_t pos = startPos;
+            while (pos < source.length() && source[pos] != '(') {
+                if (!isValidDelimiter(std::string(1, source[pos]))) {
+                    result.error = "无效的原始字符串分隔符字符: '" + std::string(1, source[pos]) + "'";
+                    return result;
+                }
+                result.delimiter += source[pos];
+                updatePosition(result.newPos, source[pos]);
+                pos++;
+
+                if (result.delimiter.length() > MAX_DELIMITER_LENGTH) {
+                    result.error = "原始字符串分隔符过长（最大长度为" + std::to_string(MAX_DELIMITER_LENGTH) + "）";
+                    return result;
                 }
             }
-            return true;
+
+            if (pos >= source.length() || source[pos] != '(') {
+                result.error = "原始字符串缺少开始括号";
+                return result;
+            }
+            updatePosition(result.newPos, '(');
+
+            result.success = true;
+            result.consumed = pos - startPos + 1;  // 包括'('
+            return result;
         }
 
-        bool RawStringProcessor::findClosingSequence(const std::string& source,
-                                                     size_t& currentPos,
-                                                     const std::string& delimiter,
-                                                     size_t& endPos) {
-            if (source[currentPos] != ')') {
-                return false;
-            }
+        ClosingSequenceResult RawStringProcessor::findClosingSequence(const std::string& source,
+                                                                      size_t startPos,
+                                                                      const std::string& delimiter,
+                                                                      RawPositionInfo& currentPos) {
+            ClosingSequenceResult result;
+            result.success = false;
+            result.consumed = 0;
+            result.newPos = currentPos;
+            result.lineCount = 0;
+            result.contentConsumed = 0;
 
             std::string closingSequence = ")" + delimiter + "\"";
-            size_t remainingLength = source.length() - currentPos;
+            size_t pos = startPos;
 
-            if (remainingLength < closingSequence.length()) {
-                return false;
-            }
+            while (pos < source.length()) {
+                if (source[pos] == ')') {
+                    // 检查是否匹配结束序列
+                    if (pos + closingSequence.length() <= source.length()) {
+                        bool matches = true;
+                        for (size_t i = 0; i < closingSequence.length(); ++i) {
+                            if (source[pos + i] != closingSequence[i]) {
+                                matches = false;
+                                break;
+                            }
+                        }
+                        if (matches) {
+                            result.content = source.substr(startPos, pos - startPos);
+                            result.success = true;
+                            result.consumed = pos + closingSequence.length() - startPos;
 
-            // 尝试匹配完整的结束序列
-            for (size_t i = 0; i < closingSequence.length(); ++i) {
-                if (source[currentPos + i] != closingSequence[i]) {
-                    return false;
+                            // 更新结束序列的位置信息
+                            for (size_t i = 0; i < closingSequence.length(); ++i) {
+                                updatePosition(result.newPos, closingSequence[i]);
+                            }
+                            return result;
+                        } else {
+                            updatePosition(result.newPos, source[pos]);
+                            pos++;
+                            result.contentConsumed++;
+                            continue;
+                        }
+                    }
+                }
+
+                // 处理换行符
+                if (source[pos] == '\n') {
+                    updatePosition(result.newPos, '\n');
+                    result.lineCount++;
+                    pos++;
+                    result.contentConsumed++;
+                    if (result.lineCount > MAX_LINES) {
+                        result.error = "原始字符串超过最大行数限制（" + std::to_string(MAX_LINES) + "行）";
+                        result.consumed = pos - startPos;
+                        return result;
+                    }
+                } else if (source[pos] == '\r') {
+                    if (pos + 1 < source.length() && source[pos + 1] == '\n') {
+                        pos += 2;
+                        result.contentConsumed += 2;
+                        updatePosition(result.newPos, '\n');
+                    } else {
+                        pos++;
+                        result.contentConsumed++;
+                        updatePosition(result.newPos, '\r');
+                    }
+                    result.lineCount++;
+                    if (result.lineCount > MAX_LINES) {
+                        result.error = "原始字符串超过最大行数限制（" + std::to_string(MAX_LINES) + "行）";
+                        result.consumed = pos - startPos;
+                        return result;
+                    }
+                } else if (static_cast<unsigned char>(source[pos]) >= 0x80) {
+                    // 处理UTF-8字符
+                    auto utf8Result = processUTF8Char(source, pos);
+                    result.newPos.column++;  // UTF-8字符只增加一列
+                    pos += utf8Result.consumed;
+                    result.contentConsumed += utf8Result.consumed;
+                } else {
+                    updatePosition(result.newPos, source[pos]);
+                    pos++;
+                    result.contentConsumed++;
                 }
             }
 
-            // 验证结束序列后没有紧跟着分隔符的有效字符
-            size_t afterClosing = currentPos + closingSequence.length();
-            if (afterClosing < source.length()) {
-                char nextChar = source[afterClosing];
-                if (isValidDelimiter(std::string(1, nextChar))) {
+            result.error = "原始字符串未找到匹配的结束序列 " + closingSequence;
+            result.consumed = pos - startPos;
+            return result;
+        }
+
+        bool RawStringProcessor::isValidDelimiter(const std::string& delimiter) {
+            // 分隔符只能包含以下字符：
+            // - 字母（a-z, A-Z）
+            // - 数字（0-9）
+            // - 下划线（_）
+            for (char c : delimiter) {
+                if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
                     return false;
                 }
             }
-
-            endPos = currentPos + closingSequence.length();
             return true;
         }
 
-        bool RawStringProcessor::processUTF8Char(const std::string& source,
-                                                 size_t& currentPos,
-                                                 std::string& content,
-                                                 std::vector<std::string>& warnings) {
-            auto [codepoint, length] = unicode::UnicodeEncoding::getMultiByteChar(source, currentPos);
-            if (length == 0) {
-                warnings.push_back("无效的UTF-8序列，使用替换字符");
-                content += "�";
-                currentPos++;
-                return false;
+        UTF8ProcessResult RawStringProcessor::processUTF8Char(const std::string& source, size_t startPos) {
+            UTF8ProcessResult result;
+            result.success = false;
+            result.consumed = 0;
+
+            // 使用Unicode模块的功能处理UTF-8字符
+            auto [codepoint, bytesRead] = unicode::UnicodeEncoding::getMultiByteChar(source, startPos);
+
+            if (bytesRead == 0) {
+                result.error = "无效的UTF-8序列";
+                return result;
             }
 
-            if (codepoint > 0x10FFFF || (codepoint >= 0xD800 && codepoint <= 0xDFFF)) {
-                warnings.push_back("无效的Unicode码点: U+" + std::to_string(codepoint));
-                content += "�";
-                currentPos += length;
-                return false;
+            // 验证码点的有效性
+            if (!unicode::UnicodeCore::isValidCodepoint(codepoint)) {
+                result.error = "无效的Unicode码点";
+                return result;
             }
 
-            // 对于原始字符串，我们保留原始的UTF-8序列
-            currentPos += length;
-            return true;
+            result.success = true;
+            result.consumed = bytesRead;
+            result.content = codepoint;
+            return result;
         }
 
         bool RawStringProcessor::validateContent(const std::string& content,
                                                  std::string& error,
                                                  std::vector<std::string>& warnings) {
-            // 对于原始字符串，我们主要验证以下几点：
-            // 1. 基本的UTF-8有效性
-            // 2. 行数限制
-            // 3. 总长度检查
+            // 使用Unicode模块验证字符串内容
+            auto validationResult = unicode::validateString(content);
 
-            // 检查UTF-8有效性
-            if (!unicode::UnicodeProcessing::isValidUtf8(content)) {
-                warnings.push_back("字符串包含无效的UTF-8序列，但作为原始字符串将保持不变");
-            }
-
-            // 检查行数
-            size_t lineCount = 1;
-            for (char c : content) {
-                if (c == '\n') {
-                    lineCount++;
-                    if (lineCount > MAX_LINES) {
-                        error = "字符串超过最大行数限制";
-                        return false;
+            if (!validationResult.valid) {
+                // 收集所有错误信息
+                std::stringstream errorStream;
+                for (const auto& err : validationResult.errors) {
+                    if (!errorStream.str().empty()) {
+                        errorStream << "; ";
                     }
+                    errorStream << err.message;
+                    warnings.push_back("位置 " + std::to_string(err.position) + ": " + err.message);
                 }
+                error = errorStream.str();
+                return false;
             }
 
-            // 检查总长度
+            // 检查字符串长度
             if (content.length() > INITIAL_BUFFER_SIZE) {
-                warnings.push_back("字符串长度超过建议的缓冲区大小，可能会影响性能");
+                warnings.push_back("字符串长度超过建议的最大值（" + std::to_string(INITIAL_BUFFER_SIZE) + "字节）");
+            }
+
+            // 检查是否包含控制字符（除了换行符和制表符）
+            for (size_t i = 0; i < content.length(); ++i) {
+                unsigned char c = static_cast<unsigned char>(content[i]);
+                if (c < 32 && c != '\n' && c != '\t' && c != '\r') {
+                    warnings.push_back("字符串包含控制字符（ASCII " + std::to_string(c) + "）");
+                }
             }
 
             return true;

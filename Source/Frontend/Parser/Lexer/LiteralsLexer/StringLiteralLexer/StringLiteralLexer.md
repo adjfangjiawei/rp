@@ -1,9 +1,28 @@
-# StringLiteralLexer
+# StringLiteralLexer 模块文档
 
-## 枚举
+## 主模块
+
+包含头文件:
+```cpp
+#include "Frontend/Parser/Lexer/LiteralsLexer/StringLiteralLexer/DiagnosticsHandler.h"
+#include "Frontend/Parser/Lexer/LiteralsLexer/StringLiteralLexer/EscapeSequenceProcessor.h"
+#include "Frontend/Parser/Lexer/LiteralsLexer/StringLiteralLexer/NormalStringProcessor.h"
+#include "Frontend/Parser/Lexer/LiteralsLexer/StringLiteralLexer/PrefixProcessor.h"
+#include "Frontend/Parser/Lexer/LiteralsLexer/StringLiteralLexer/RawStringProcessor.h"
+#include "Frontend/Parser/Lexer/LiteralsLexer/StringLiteralLexer/StringLiteralUtils.h"
+#include "Frontend/Parser/Lexer/LiteralsLexer/StringLiteralLexer/StringValidator.h"
+#include "Frontend/Parser/Lexer/LiteralsLexer/StringLiteralLexer/TokenCreator.h"
+#include "Frontend/Parser/Lexer/LiteralsLexer/StringLiteralLexer/UnicodeProcessor.h"
+```
+
+命名空间:
+```cpp
+rp::frontend
+```
+
+## 枚举类型
 
 ### StringPrefix
-字符串字面量前缀类型
 ```cpp
 enum class StringPrefix {
     None,  // 无前缀
@@ -20,7 +39,6 @@ enum class StringPrefix {
 ```
 
 ### StringError
-字符串错误类型
 ```cpp
 enum class StringError {
     None,
@@ -33,7 +51,6 @@ enum class StringError {
 ```
 
 ### QuoteType
-字符串引号类型
 ```cpp
 enum class QuoteType {
     None,
@@ -48,10 +65,9 @@ enum class QuoteType {
 
 ## 结构体
 
-### StringScanResult
-字符串扫描结果
+### StringProcessResult
 ```cpp
-struct StringScanResult {
+struct StringProcessResult {
     Token token;                        // 处理后的Token
     bool success;                       // 是否成功
     std::string error;                  // 错误信息
@@ -61,8 +77,30 @@ struct StringScanResult {
 };
 ```
 
+### RawStringResult
+```cpp
+struct RawStringResult {
+    Token token;                        // 处理后的Token
+    bool success;                       // 是否成功
+    std::string error;                  // 错误信息
+    size_t errorPosition;               // 错误位置
+    bool hasWarnings;                   // 是否有警告
+    std::vector<std::string> warnings;  // 警告信息列表
+};
+```
+
+### EscapeSequenceResult
+```cpp
+struct EscapeSequenceResult {
+    std::string value;     // 处理后的字符串值
+    size_t consumed;       // 消耗的字符数
+    bool success;          // 是否成功
+    std::string error;     // 错误信息
+    size_t errorPosition;  // 错误位置
+};
+```
+
 ### StringValidationOptions
-字符串验证选项
 ```cpp
 struct StringValidationOptions {
     bool allowControlChars;    // 是否允许控制字符
@@ -76,39 +114,62 @@ struct StringValidationOptions {
 };
 ```
 
-### EscapeSequenceResult
-转义序列处理结果
+## 类
+
+### DiagnosticsHandler
 ```cpp
-struct EscapeSequenceResult {
-    std::string value;     // 处理后的字符串值
-    size_t consumed;       // 消耗的字符数
-    bool success;          // 是否成功
-    std::string error;     // 错误信息
-    size_t errorPosition;  // 错误位置
+class DiagnosticsHandler {
+    explicit DiagnosticsHandler(const std::shared_ptr<DiagnosticEngine>& diagnostics);
+    void handleDiagnostics(const std::string& error,
+                          const std::vector<std::string>& warnings,
+                          const SourceLocation& loc);
+    void reportError(const std::string& error, const SourceLocation& loc);
+    void reportWarning(const std::string& warning, const SourceLocation& loc);
 };
 ```
 
-## 类
-
-### StringLiteralLexer
+### EscapeSequenceProcessor
 ```cpp
-class StringLiteralLexer {
-public:
-    explicit StringLiteralLexer(const std::shared_ptr<DiagnosticEngine>& diagnostics);
-    void setSource(const std::string& src, size_t length, const std::string& filename);
-    StringScanResult scan();
-    void setValidationOptions(const StringValidationOptions& options);
-    size_t getCurrentPos() const;
-    size_t getCurrentLine() const;
-    size_t getCurrentColumn() const;
-    void setPosition(size_t pos, size_t line, size_t column);
+class EscapeSequenceProcessor {
+    static std::string processEscapeSequence(const std::string& source, size_t& currentPos, std::string& error);
+    static bool isValidEscapeSequence(char c);
+    static std::optional<size_t> getExpectedLength(char escapeChar);
+};
+```
+
+### NormalStringProcessor
+```cpp
+class NormalStringProcessor {
+    static StringProcessResult processNormalStringLiteral(const std::string& source,
+                                                        size_t& currentPos,
+                                                        const SourceLocation& startLoc);
+    static QuoteType getQuoteType(const std::string& source, size_t pos, size_t& quoteLength);
+};
+```
+
+### PrefixProcessor
+```cpp
+class PrefixProcessor {
+    static std::tuple<StringPrefix, size_t> parsePrefix(const std::string& source,
+                                                      size_t currentPos,
+                                                      size_t sourceLength);
+    static bool isValidPrefix(const std::string& prefix);
+    static std::string getPrefixString(StringPrefix prefix);
+};
+```
+
+### RawStringProcessor
+```cpp
+class RawStringProcessor {
+    static RawStringResult processRawStringLiteral(const std::string& source,
+                                                 size_t& currentPos,
+                                                 const SourceLocation& startLoc);
 };
 ```
 
 ### StringLiteralUtils
 ```cpp
 class StringLiteralUtils {
-public:
     static bool isOctalDigit(char c);
     static bool isHexDigit(char c);
     static int hexDigitToInt(char c);
@@ -134,29 +195,34 @@ public:
 };
 ```
 
-### EscapeSequenceProcessor
+### StringValidator
 ```cpp
-class EscapeSequenceProcessor {
-public:
-    static std::string processEscapeSequence(const std::string& source, size_t& currentPos, std::string& error);
-    static bool isValidEscapeSequence(char c);
-    static std::optional<size_t> getExpectedLength(char escapeChar);
+class StringValidator {
+    explicit StringValidator(const StringValidationOptions& options);
+    bool validate(const std::string& content, std::string& error, std::vector<std::string>& warnings);
 };
 ```
 
-### NormalStringProcessor
+### TokenCreator
 ```cpp
-class NormalStringProcessor {
-public:
-    static StringProcessResult processNormalStringLiteral(const std::string& source, size_t& currentPos, const SourceLocation& startLoc);
-    static QuoteType getQuoteType(const std::string& source, size_t pos, size_t& quoteLength);
+class TokenCreator {
+    static Token createStringToken(const std::string& content,
+                                 StringPrefix prefix,
+                                 size_t line,
+                                 size_t column,
+                                 const std::string& filename);
 };
 ```
 
-### RawStringProcessor
+### UnicodeProcessor
 ```cpp
-class RawStringProcessor {
-public:
-    static RawStringResult processRawStringLiteral(const std::string& source, size_t& currentPos, const SourceLocation& startLoc);
+class UnicodeProcessor {
+    static std::string processUnicodeEscape(const std::string& source,
+                                          size_t& currentPos,
+                                          bool isLongForm,
+                                          std::string& error);
+    static std::string codePointToUTF8(uint32_t codepoint);
+    static bool isValidCodePoint(uint32_t codepoint);
+    static std::string processHexEscape(const std::string& source, size_t& currentPos, std::string& error);
 };
 ```

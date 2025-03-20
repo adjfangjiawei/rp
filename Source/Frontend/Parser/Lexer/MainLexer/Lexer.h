@@ -93,6 +93,7 @@ namespace rp {
             char getCurrentChar() const { return isAtEnd() ? '\0' : source[currentPos]; }
             char peekChar(size_t offset = 1) const;
             bool matchString(const std::string& str) const;
+            void updatePosition(const char* text, size_t length);
 
             // 禁用拷贝和赋值
             Lexer(const Lexer&) = delete;

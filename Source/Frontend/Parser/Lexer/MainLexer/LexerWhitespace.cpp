@@ -99,32 +99,47 @@ namespace rp {
         }
 
         void Lexer::skipUntilNextToken() {
+            size_t originalPos = currentPos;
             size_t skippedCount = 0;
             std::string skippedChars;
             bool inError = false;
+            bool foundValidToken = false;
 
             while (!isAtEnd() && skippedCount < 100) {  // 防止无限循环
                 char c = getCurrentChar();
+                char next = peekChar();
+
+                // 特殊处理字符串相关的字符
+                if (c == '"' || c == '\'' || (c == 'R' && next == '"') ||
+                    ((c == 'L' || c == 'u' || c == 'U') && (next == '"' || next == '\''))) {
+                    foundValidToken = true;
+                    break;
+                }
+
+                // 处理换行符
+                if (c == '\n') {
+                    currentLine++;
+                    currentColumn = 1;
+                    currentPos++;
+                    skippedCount++;
+                    inError = false;  // 新行重置错误状态
+                    continue;
+                }
 
                 // 如果找到可能的token起始，停止跳过
                 if (isValidTokenStart(c)) {
+                    foundValidToken = true;
                     break;
                 }
 
                 // 记录跳过的字符
-                if (!inError) {
+                if (!inError && !std::isspace(c)) {
                     skippedChars += c;
                     skippedCount++;
                 }
 
                 // 更新位置
-                if (c == '\n') {
-                    currentLine++;
-                    currentColumn = 1;
-                    inError = false;  // 新行重置错误状态
-                } else {
-                    currentColumn++;
-                }
+                currentColumn++;
                 currentPos++;
 
                 // 如果跳过了太多字符，标记为错误状态
@@ -133,11 +148,17 @@ namespace rp {
                     inError = true;
                 }
             }
-        }
 
-        bool Lexer::isValidTokenStart(char c) const {
-            return std::isalpha(c) || c == '_' || std::isdigit(c) || c == '"' || c == '\'' || c == '#' ||
-                   strchr("+-*/%<>=!&|^~.,:;()[]{}\\", c) != nullptr;
+            // 确保至少前进了一个字符
+            if (currentPos <= originalPos || !foundValidToken) {
+                currentPos = originalPos + 1;
+                if (currentPos < sourceLength && source[originalPos] == '\n') {
+                    currentLine++;
+                    currentColumn = 1;
+                } else {
+                    currentColumn++;
+                }
+            }
         }
 
     }  // namespace frontend

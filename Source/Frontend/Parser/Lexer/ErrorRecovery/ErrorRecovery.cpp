@@ -38,10 +38,29 @@ namespace rp {
                 case Strategy::SkipToNextToken:
                     // 跳过空白字符和无效字符
                     while (currentPos < source.length()) {
-                        if (!std::isspace(source[currentPos])) {
+                        char c = source[currentPos];
+                        char next = (currentPos + 1 < source.length()) ? source[currentPos + 1] : '\0';
+
+                        // 检查字符串字面量的开始
+                        if (c == '"' || c == '\'' || (c == 'R' && next == '"') ||
+                            ((c == 'L' || c == 'u' || c == 'U') && (next == '"' || next == '\''))) {
                             state.inRecovery = false;
                             return true;
                         }
+
+                        // 检查其他有效token开始
+                        if (!std::isspace(c) && (std::isalnum(c) || c == '_' || c == '{' || c == '}' || c == '(' ||
+                                                 c == ')' || c == '[' || c == ']' || c == ';' || c == '#')) {
+                            state.inRecovery = false;
+                            return true;
+                        }
+
+                        // 处理换行符
+                        if (c == '\n') {
+                            currentPos++;
+                            continue;
+                        }
+
                         currentPos++;
                     }
                     break;

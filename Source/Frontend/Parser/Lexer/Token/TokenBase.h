@@ -19,6 +19,7 @@ namespace rp {
             unsigned line;
             unsigned column;
             std::string filename;
+            size_t endPos{0};  // 添加结束位置
 
             // 字面量值
             union {
@@ -253,6 +254,10 @@ namespace rp {
             unsigned getLine() const { return line; }
             unsigned getColumn() const { return column; }
             const std::string& getFilename() const { return filename; }
+            size_t getEndPos() const { return endPos; }
+
+            // 设置结束位置
+            void setEndPos(size_t pos) { endPos = pos; }
 
             // 比较操作符
             bool operator==(const Token& other) const { return kind == other.kind && text == other.text; }

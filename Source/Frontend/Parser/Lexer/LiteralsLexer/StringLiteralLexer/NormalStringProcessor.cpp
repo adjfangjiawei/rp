@@ -1,452 +1,344 @@
+
 #include "NormalStringProcessor.h"
 
 #include "../StringLiteralLexer/EscapeSequenceProcessor.h"
 #include "../StringLiteralLexer/StringLiteralUtils.h"
 #include "Frontend/Parser/Lexer/Unicode/Encoding/UnicodeEncoding.h"
+#include "Frontend/Parser/Lexer/Unicode/Unicode.h"
 
 namespace rp {
     namespace frontend {
 
-        StringProcessResult NormalStringProcessor::processNormalStringLiteral(const std::string& source,
-                                                                              size_t& currentPos,
-                                                                              const SourceLocation& startLoc) {
-            if (currentPos >= source.length()) {
-                StringProcessResult result;
-                result.token = Token(TokenKind::Invalid);
-                result.success = false;
-                result.error = "字符串必须以引号开始";
-                result.errorPosition = currentPos;
-                result.hasWarnings = false;
+        void NormalStringProcessor::updatePosition(PositionInfo& pos, char c) {
+            if (c == '\n') {
+                pos.line++;
+                pos.column = 1;
+            } else if (c == '\r') {
+                // 对于\r\n的情况，\n会在下一次调用时处理
+                pos.line++;
+                pos.column = 1;
+            } else {
+                pos.column++;
+            }
+        }
+
+        std::tuple<QuoteType, size_t> NormalStringProcessor::getQuoteType(const std::string& source, size_t pos) {
+            if (pos >= source.length()) {
+                return {QuoteType::None, 0};
+            }
+
+            // 检查单字节引号
+            if (source[pos] == '"') {
+                return {QuoteType::DoubleQuote, 1};
+            }
+            if (source[pos] == '\'') {
+                return {QuoteType::SingleQuote, 1};
+            }
+
+            // 检查多字节引号（中文引号和智能引号）
+            if (pos + 2 >= source.length()) {
+                return {QuoteType::None, 0};
+            }
+
+            // 检查UTF-8编码的中文引号
+            unsigned char firstByte = static_cast<unsigned char>(source[pos]);
+            if (firstByte >= 0xE0) {  // UTF-8多字节序列的开始
+                auto [codepoint, bytesRead] = unicode::UnicodeEncoding::getMultiByteChar(source, pos);
+                if (bytesRead > 0) {
+                    switch (codepoint) {
+                        case 0x300C:  // 「
+                            return {QuoteType::ChineseQuote, bytesRead};
+                        case 0x300E:  // 『
+                            return {QuoteType::ChineseBookQuote, bytesRead};
+                        case 0x2018:  // '
+                            return {QuoteType::SmartQuote, bytesRead};
+                        case 0x201C:  // "
+                            return {QuoteType::SmartDoubleQuote, bytesRead};
+                    }
+                }
+            }
+
+            return {QuoteType::None, 0};
+        }
+
+        UTF8ProcessResult NormalStringProcessor::processUTF8Char(const std::string& source, size_t startPos) {
+            UTF8ProcessResult result;
+            result.success = false;
+            result.consumed = 0;
+            result.content = "";
+
+            // 使用Unicode模块处理UTF-8字符
+            auto [codepoint, bytesRead] = unicode::UnicodeEncoding::getMultiByteChar(source, startPos);
+
+            if (bytesRead == 0) {
+                result.error = "无效的UTF-8序列";
                 return result;
             }
 
-            // 检查开始引号类型
-            std::string quoteType;
-            if (source[currentPos] == '"' || source[currentPos] == '\'') {
-                quoteType = std::string(1, source[currentPos]);
-                currentPos++;
-            } else {
-                // 检查UTF-8编码的中文引号
-                auto [codepoint, length] = unicode::UnicodeEncoding::getMultiByteChar(source, currentPos);
-                if (length > 0) {
-                    std::string quote = source.substr(currentPos, length);
-                    if (quote == "「" || quote == "『" || quote == "'" || quote == "\"") {
-                        quoteType = quote;
-                        currentPos += length;
-                    } else {
-                        StringProcessResult result;
-                        result.token = Token(TokenKind::Invalid);
-                        result.success = false;
-                        result.error = "字符串必须以引号开始（支持 \", ', 「, 『, \',\"）";
-                        result.errorPosition = currentPos;
-                        result.hasWarnings = false;
-                        return result;
+            // 验证码点的有效性
+            if (!unicode::UnicodeCore::isValidCodepoint(codepoint)) {
+                result.error = "无效的Unicode码点";
+                return result;
+            }
+
+            // 获取原始UTF-8序列
+            result.content = source.substr(startPos, bytesRead);
+            result.success = true;
+            result.consumed = bytesRead;
+            result.content = codepoint;
+
+            return result;
+        }
+
+        MultiLineResult NormalStringProcessor::processMultiLineString(const std::string& source,
+                                                                      size_t startPos,
+                                                                      PositionInfo& currentPos) {
+            MultiLineResult result;
+            result.success = true;
+            result.consumed = 0;
+            result.lineCount = 0;
+            result.content = "";
+            result.newPos = currentPos;  // 初始化为当前位置
+
+            size_t pos = startPos;
+
+            // 跳过反斜杠
+            if (pos < source.length() && source[pos] == '\\') {
+                updatePosition(result.newPos, '\\');
+                pos++;
+            }
+
+            // 处理换行符
+            if (pos < source.length()) {
+                if (source[pos] == '\r') {
+                    updatePosition(result.newPos, '\r');
+                    pos++;
+                    if (pos < source.length() && source[pos] == '\n') {
+                        updatePosition(result.newPos, '\n');
+                        pos++;
                     }
-                } else {
-                    StringProcessResult result;
-                    result.token = Token(TokenKind::Invalid);
-                    result.success = false;
-                    result.error = "字符串必须以引号开始（支持 \", \', 「, 『, \', \"）";
-                    result.errorPosition = currentPos;
-                    result.hasWarnings = false;
-                    return result;
+                } else if (source[pos] == '\n') {
+                    updatePosition(result.newPos, '\n');
+                    pos++;
                 }
             }
+
+            result.lineCount = 1;
+
+            // 跳过前导空白字符，但保留一个缩进级别
+            size_t indentLevel = 0;
+            while (pos < source.length() && StringLiteralUtils::isWhitespace(source[pos])) {
+                if (source[pos] == ' ') {
+                    indentLevel++;
+                    updatePosition(result.newPos, ' ');
+                } else if (source[pos] == '\t') {
+                    indentLevel += 4;
+                    updatePosition(result.newPos, '\t');
+                }
+                pos++;
+            }
+
+            result.consumed = pos - startPos;
+            currentPos = result.newPos;  // 更新当前位置
+            return result;
+        }
+
+        StringProcessResult NormalStringProcessor::processNormalStringLiteral(const std::string& source,
+                                                                              size_t startPos,
+                                                                              StringPrefix prefix,
+                                                                              const SourceLocation& startLoc) {
+            StringProcessResult result;
+            result.success = false;
+            result.consumed = 0;
+
+            // 初始化位置信息
+            PositionInfo currentPos(startLoc.line, startLoc.column);
+
+            if (startPos >= source.length()) {
+                result.token = Token(TokenKind::Invalid);
+                result.error = "字符串必须以引号开始";
+                result.errorPosition = startPos;
+                result.endPos = currentPos;
+                return result;
+            }
+
+            // 获取引号类型
+            auto [quoteType, quoteLength] = getQuoteType(source, startPos);
+            if (quoteType == QuoteType::None) {
+                result.token = Token(TokenKind::Invalid);
+                result.error = "字符串必须以引号开始（支持 \", ', 「, 『, ',\"）";
+                result.errorPosition = startPos;
+                result.endPos = currentPos;
+                return result;
+            }
+
+            // 更新引号的位置信息
+            for (size_t i = 0; i < quoteLength; i++) {
+                updatePosition(currentPos, source[startPos + i]);
+            }
+
+            size_t pos = startPos + quoteLength;
             std::string content;
+            bool hasEscapeError = false;
             bool inMultiLine = false;
             size_t lineCount = 0;
-            const size_t MAX_LINES = 1000;  // 限制最大行数
+            size_t lastValidPos = pos;
 
-            bool hasEscapeError = false;  // 添加标志来跟踪是否遇到过转义序列错误
-
-            while (currentPos < source.length()) {
-                // 处理字符串终止
-                bool isEndQuote = false;
-                if (quoteType == "\"" || quoteType == "'") {
-                    isEndQuote =
-                        source[currentPos] == quoteType[0] && !StringLiteralUtils::isEscaped(source, currentPos);
-                    if (isEndQuote) currentPos++;
-                } else {
-                    // 检查UTF-8编码的中文结束引号
-                    auto [codepoint, length] = unicode::UnicodeEncoding::getMultiByteChar(source, currentPos);
-                    if (length > 0) {
-                        std::string quote = source.substr(currentPos, length);
-                        std::string expectedEndQuote;
-                        if (quoteType == "「")
-                            expectedEndQuote = "」";
-                        else if (quoteType == "『")
-                            expectedEndQuote = "』";
-                        else if (quoteType == "'")
-                            expectedEndQuote = "'";
-                        else if (quoteType == "\"")
-                            expectedEndQuote = "\"";
-
-                        if (quote == expectedEndQuote) {
-                            isEndQuote = true;
-                            currentPos += length;
-                        }
-                    }
-                }
-
-                if (isEndQuote) {
-                    StringProcessResult result;
+            while (pos < source.length()) {
+                // 检查结束引号
+                auto [endQuoteType, endQuoteLength] = getQuoteType(source, pos);
+                if (endQuoteType == quoteType && !StringLiteralUtils::isEscaped(source, pos)) {
+                    // 成功找到结束引号
                     result.token = Token(TokenKind::StringLiteral);
-                    result.token.setText(content);
+                    result.token.setText(source.substr(startPos, pos + endQuoteLength - startPos));
                     result.token.line = static_cast<unsigned int>(startLoc.line);
                     result.token.column = static_cast<unsigned int>(startLoc.column);
-                    result.success = true;
-                    result.errorPosition = currentPos;
+                    if (result.error == "" && !result.hasWarnings()) {
+                        result.success = true;
+                    }
+                    result.consumed = pos + endQuoteLength - startPos;
+
+                    // 更新结束引号的位置信息
+                    for (size_t i = 0; i < endQuoteLength; i++) {
+                        updatePosition(currentPos, source[pos + i]);
+                    }
+                    result.endPos = currentPos;
 
                     if (hasEscapeError) {
-                        result.hasWarnings = true;
                         result.warnings.push_back("字符串包含语法问题但已修复：");
                         result.warnings.push_back("- 包含无效的转义序列，已保留原始字符");
                         result.warnings.push_back("- 字符串已正确终止，内容已被保存");
-                        result.warnings.push_back("建议检查字符串内容确保符合预期");
-                    } else {
-                        result.hasWarnings = false;
                     }
+
                     return result;
                 }
 
                 // 处理转义序列
-                if (source[currentPos] == '\\') {
-                    if (currentPos + 1 >= source.length()) {
-                        StringProcessResult result;
+                if (source[pos] == '\\') {
+                    updatePosition(currentPos, '\\');
+
+                    if (pos + 1 >= source.length()) {
                         result.token = Token(TokenKind::Invalid);
-                        result.success = false;
                         result.error = "不完整的转义序列";
-                        result.errorPosition = currentPos;
-                        result.hasWarnings = false;
+                        result.errorPosition = pos;
+                        result.consumed = pos - startPos;
+                        result.endPos = currentPos;
                         return result;
                     }
 
-                    char next = source[currentPos + 1];
-
-                    // 处理行继续符
+                    char next = source[pos + 1];
                     if (next == '\n' || next == '\r') {
-                        inMultiLine = true;
-                        if (next == '\r' && currentPos + 2 < source.length() && source[currentPos + 2] == '\n') {
-                            currentPos += 3;  // 跳过 \r\n
-                        } else {
-                            currentPos += 2;  // 跳过 \n 或 \r
-                        }
-                        lineCount++;
-                        if (lineCount > MAX_LINES) {
-                            // 尝试在最大行数限制处截断字符串
-                            StringProcessResult result;
-                            result.token = Token(TokenKind::StringLiteral);
-                            result.token.setText(content);
-                            result.token.line = static_cast<unsigned int>(startLoc.line);
-                            result.token.column = static_cast<unsigned int>(startLoc.column);
-                            result.success = true;
-                            result.errorPosition = currentPos;
-                            result.hasWarnings = true;
-
-                            std::string warningMsg = "字符串超过最大行数限制(" + std::to_string(MAX_LINES) + "行)：";
-                            result.warnings.push_back(warningMsg);
-                            result.warnings.push_back("- 字符串已在最大行数处截断");
-                            result.warnings.push_back("- 建议拆分为多个较小的字符串");
-                            result.warnings.push_back("- 或使用字符串连接操作符");
-
-                            // 尝试找到下一个引号位置
-                            size_t nextQuotePos = source.find('"', currentPos);
-                            if (nextQuotePos != std::string::npos) {
-                                currentPos = nextQuotePos + 1;
-                            }
-
+                        // 处理行继续符
+                        auto multiLineResult = processMultiLineString(source, pos, currentPos);
+                        if (!multiLineResult.success || multiLineResult.lineCount > MAX_LINES) {
+                            result.token = Token(TokenKind::Invalid);
+                            result.error = "字符串超过最大行数限制";
+                            result.errorPosition = pos;
+                            result.consumed = pos - startPos;
+                            result.endPos = currentPos;
                             return result;
                         }
 
-                        // 跳过下一行开头的空白字符
-                        while (currentPos < source.length() && StringLiteralUtils::isWhitespace(source[currentPos])) {
-                            currentPos++;
-                        }
+                        pos += multiLineResult.consumed;
+                        content += multiLineResult.content;
+                        lineCount += multiLineResult.lineCount;
+                        inMultiLine = true;
+                        lastValidPos = pos;
+                        currentPos = multiLineResult.newPos;
                         continue;
                     }
 
-                    // 处理转义序列
-                    // 检查下一个字符是否是有效的转义字符
-                    if (currentPos + 1 >= source.length()) {
-                        StringProcessResult result;
-                        result.token = Token(TokenKind::Invalid);
-                        result.success = false;
-                        result.error = "不完整的转义序列";
-                        result.errorPosition = currentPos;
-                        result.hasWarnings = false;
-                        return result;
-                    }
-
-                    char nextChar = source[currentPos + 1];
-                    if (!EscapeSequenceProcessor::isValidEscapeSequence(nextChar)) {
-                        // 记录详细的错误信息但继续扫描
-                        hasEscapeError = true;  // 设置错误标志
-                        std::string escapeError = "无效的转义序列 '\\" + std::string(1, nextChar) + "'";
-                        if (StringLiteralUtils::isValidStringChar(nextChar)) {
-                            escapeError += "，该字符不需要转义";
-                        }
-                        // 创建警告但继续处理
-                        Token warningToken(TokenKind::StringLiteral);
-                        warningToken.setError(
-                            escapeError,
-                            static_cast<unsigned int>(startLoc.line),
-                            static_cast<unsigned int>(startLoc.column + (currentPos - startLoc.column)));
-
-                        currentPos += 2;      // 跳过反斜杠和下一个字符
-                        content += '\\';      // 保留原始的反斜杠
-                        content += nextChar;  // 保留原始的字符
-                        continue;
-                    }
-
+                    // 处理其他转义序列
                     std::string escapeError;
-                    size_t escapePos = currentPos;
+                    size_t escapePos = pos;
                     std::string processed =
                         EscapeSequenceProcessor::processEscapeSequence(source, escapePos, escapeError);
 
                     if (!escapeError.empty()) {
-                        // 记录错误但继续扫描，保留原始字符
-                        hasEscapeError = true;  // 设置错误标志
-                        currentPos += 2;        // 跳过反斜杠和下一个字符
-                        content += '\\';        // 保留原始的反斜杠
-                        content += nextChar;    // 保留原始的字符
+                        hasEscapeError = true;
+                        content += '\\';
+                        updatePosition(currentPos, '\\');
+                        if (pos + 1 < source.length() && source[pos + 1] != '\n' && source[pos + 1] != '\r') {
+                            content += source[pos + 1];
+                            updatePosition(currentPos, source[pos + 1]);
+                        }
+                        pos += 2;
+                        result.warnings.push_back("在位置 " + std::to_string(escapePos) + " 发现无效的转义序列: \\" +
+                                                  source[escapePos + 1]);
                     } else {
                         content += processed;
-                        currentPos = escapePos;
+                        // 更新位置信息，对于转义序列，我们只移动一列
+                        currentPos.column++;
+                        pos = escapePos;
+                        lastValidPos = pos;
                     }
                     continue;
                 }
 
                 // 处理换行符
-                if (source[currentPos] == '\n' || source[currentPos] == '\r') {
-                    if (!inMultiLine) {
-                        // 检查是否可能是忘记了行继续符
-                        bool hasLeadingWhitespace = false;
-                        size_t nextPos = currentPos + 1;
-                        while (nextPos < source.length() && StringLiteralUtils::isWhitespace(source[nextPos])) {
-                            nextPos++;
-                            hasLeadingWhitespace = true;
-                        }
+                if (source[pos] == '\n' || source[pos] == '\r') {
+                    // 遇到未转义的换行符时，继续解析多行字符串
+                    result.token = Token(TokenKind::Invalid);
+                    result.token.line = static_cast<unsigned int>(startLoc.line);
+                    result.token.column = static_cast<unsigned int>(startLoc.column);
+                    result.error = "字符串中包含未转义的换行符";
+                    result.errorPosition = pos;
+                    result.consumed = lastValidPos - startPos;
+                    result.endPos = currentPos;
 
-                        // 如果下一行开头有引号，可能是想要一个多行字符串
-                        if (nextPos < source.length() && source[nextPos] == '"') {
-                            StringProcessResult result;
-                            result.token = Token(TokenKind::StringLiteral);
-                            result.token.setText(content);
-                            result.token.line = static_cast<unsigned int>(startLoc.line);
-                            result.token.column = static_cast<unsigned int>(startLoc.column);
-                            result.success = true;
-                            result.errorPosition = currentPos;
-                            result.hasWarnings = true;
-                            result.warnings.push_back("发现未转义的换行符：");
-                            result.warnings.push_back("- 如果需要多行字符串，请在行尾添加反斜杠\\");
-                            result.warnings.push_back("- 如果是不同的字符串，请确保正确终止当前字符串");
-                            result.warnings.push_back("已尝试将内容作为单个字符串处理");
+                    result.warnings.push_back("在位置 " + std::to_string(pos) + " 发现未转义的换行符");
+                    result.warnings.push_back("字符串内容在位置 " + std::to_string(lastValidPos) + " 之前是有效的");
+                    result.warnings.push_back("提示：使用反斜杠(\\)来转义换行符，或使用多行字符串语法");
 
-                            // 更新位置到找到的引号之前
-                            currentPos = nextPos;
-                            return result;
-                        } else {
-                            // 尝试寻找下一个引号进行错误恢复
-                            size_t nextQuotePos = source.find('"', currentPos);
-                            if (nextQuotePos != std::string::npos) {
-                                StringProcessResult result;
-                                result.token = Token(TokenKind::StringLiteral);
-                                result.token.setText(content);
-                                result.token.line = static_cast<unsigned int>(startLoc.line);
-                                result.token.column = static_cast<unsigned int>(startLoc.column);
-                                result.success = true;
-                                result.errorPosition = currentPos;
-                                result.hasWarnings = true;
-                                result.warnings.push_back("字符串中包含未转义的换行符：");
-                                result.warnings.push_back("- 已找到后续引号并尝试恢复");
-                                result.warnings.push_back("- 建议检查字符串格式是否符合预期");
-
-                                currentPos = nextQuotePos + 1;
-                                return result;
-                            }
-
-                            StringProcessResult result;
-                            result.token = Token(TokenKind::Invalid);
-                            result.success = false;
-                            result.error = "字符串中包含未转义的换行符且找不到结束引号";
-                            result.errorPosition = currentPos;
-                            result.hasWarnings = false;
-                            return result;
-                        }
-                    }
-
-                    lineCount++;
-                    if (lineCount > MAX_LINES) {
-                        StringProcessResult result;
-                        result.token = Token(TokenKind::Invalid);
-                        result.success = false;
-                        result.error = "字符串超过最大行数限制";
-                        result.errorPosition = currentPos;
-                        result.hasWarnings = false;
-                        return result;
-                    }
-
-                    // 统一处理换行符
-                    content += '\n';  // 将所有类型的换行符统一转换为 LF
-                    if (source[currentPos] == '\r' && currentPos + 1 < source.length() &&
-                        source[currentPos + 1] == '\n') {
-                        currentPos += 2;  // 跳过 CRLF
-                    } else {
-                        currentPos++;  // 跳过 LF 或 CR
-                    }
-
-                    // 跳过下一行开头的空白字符
-                    while (currentPos < source.length() && StringLiteralUtils::isWhitespace(source[currentPos])) {
-                        currentPos++;
-                    }
+                    // 仍然继续查找就把换行符加入到字符串中
+                    content += source[pos];
+                    updatePosition(currentPos, source[pos]);
+                    pos++;
                     continue;
                 }
 
-                // 处理 UTF-8 字符
-                unsigned char currentChar = static_cast<unsigned char>(source[currentPos]);
-                if (currentChar >= 0x80) {
-                    auto [codepoint, length] = unicode::UnicodeEncoding::getMultiByteChar(source, currentPos);
-                    if (length == 0) {
-                        // 尝试跳过无效的UTF-8序列并继续处理
+                // 处理UTF-8字符
+                if (static_cast<unsigned char>(source[pos]) >= 0x80) {
+                    auto utf8Result = processUTF8Char(source, pos);
+                    if (!utf8Result.success) {
                         hasEscapeError = true;
-
-                        // 计算可能的UTF-8序列长度
-                        size_t possibleLength = 1;
-                        unsigned char firstByte = static_cast<unsigned char>(source[currentPos]);
-                        if ((firstByte & 0xE0) == 0xC0)
-                            possibleLength = 2;
-                        else if ((firstByte & 0xF0) == 0xE0)
-                            possibleLength = 3;
-                        else if ((firstByte & 0xF8) == 0xF0)
-                            possibleLength = 4;
-
-                        std::string errorMsg = "发现无效的UTF-8序列：\n";
-                        errorMsg += "- 位置: 第" + std::to_string(startLoc.line) + "行，第" +
-                                    std::to_string(startLoc.column + (currentPos - startLoc.column)) + "列\n";
-                        errorMsg += "- 字节值: ";
-
-                        // 显示出错字节的十六进制值
-                        for (size_t i = 0; i < possibleLength && (currentPos + i) < source.length(); ++i) {
-                            char hex[4];
-                            snprintf(hex, sizeof(hex), "%02X", static_cast<unsigned char>(source[currentPos + i]));
-                            errorMsg += std::string(hex) + " ";
-                        }
-
-                        errorMsg += "\n- 该序列将被跳过，继续处理后续内容";
-
-                        // 创建警告但继续处理
-                        Token warningToken(TokenKind::StringLiteral);
-                        warningToken.setError(
-                            errorMsg,
-                            static_cast<unsigned int>(startLoc.line),
-                            static_cast<unsigned int>(startLoc.column + (currentPos - startLoc.column)));
-
-                        // 跳过这个无效的UTF-8序列
-                        currentPos += possibleLength;
-                        content += "�";  // 添加替换字符
-                        continue;
-                    }
-
-                    // 验证UTF-8序列是否在有效的Unicode范围内
-                    if (codepoint > 0x10FFFF || (codepoint >= 0xD800 && codepoint <= 0xDFFF)) {
-                        hasEscapeError = true;
-                        std::string errorMsg = "无效的Unicode码点：\n";
-                        errorMsg += "- 码点值: U+" + std::to_string(codepoint) + "\n";
-                        errorMsg += "- 该字符将被替换为替换字符";
-
-                        Token warningToken(TokenKind::StringLiteral);
-                        warningToken.setError(
-                            errorMsg,
-                            static_cast<unsigned int>(startLoc.line),
-                            static_cast<unsigned int>(startLoc.column + (currentPos - startLoc.column)));
-
-                        content += "�";  // 添加替换字符
+                        content += '?';
+                        currentPos.column++;
+                        pos++;
+                        result.warnings.push_back("在位置 " + std::to_string(pos) + " 发现无效的UTF-8序列，已替换为?");
                     } else {
-                        content.append(source.substr(currentPos, length));
+                        content += utf8Result.content;
+                        // UTF-8字符只增加一列，不管它有多少字节
+                        currentPos.column++;
+                        pos += utf8Result.consumed;
+                        lastValidPos = pos;
                     }
-                    currentPos += length;
                     continue;
                 }
 
                 // 处理普通ASCII字符
-                if (!StringLiteralUtils::isValidStringChar(currentChar)) {
-                    // 记录详细的错误信息但继续扫描
-                    hasEscapeError = true;  // 复用这个标志来表示字符串内容有错误
-                    std::string charError = "发现无效字符: ";
-                    if (currentChar < 0x20) {
-                        charError += "控制字符 (ASCII " + std::to_string(static_cast<int>(currentChar)) + ")";
-                    } else {
-                        charError += "'" + std::string(1, currentChar) + "'";
-                    }
-                    charError += "，该字符将被忽略";
-
-                    // 创建警告但继续处理
-                    Token warningToken(TokenKind::StringLiteral);
-                    warningToken.setError(charError,
-                                          static_cast<unsigned int>(startLoc.line),
-                                          static_cast<unsigned int>(startLoc.column + (currentPos - startLoc.column)));
-
-                    currentPos++;  // 跳过无效字符
-                    continue;
+                if (!StringLiteralUtils::isValidStringChar(static_cast<unsigned char>(source[pos]))) {
+                    hasEscapeError = true;
+                    result.warnings.push_back("在位置 " + std::to_string(pos) + " 发现无效字符");
                 }
-                content += source[currentPos];
-                currentPos++;
+                content += source[pos];
+                updatePosition(currentPos, source[pos]);
+                lastValidPos = pos;
+                pos++;
             }
 
-            StringProcessResult result;
+            // 如果到达这里，说明没有找到结束引号
             result.token = Token(TokenKind::Invalid);
-            result.success = false;
             result.error = "未终止的字符串字面量";
-            result.errorPosition = currentPos;
-            result.hasWarnings = false;
+            result.errorPosition = startPos;
+            result.consumed = lastValidPos - startPos;
+            result.endPos = currentPos;
+
+            result.warnings.push_back("字符串从位置 " + std::to_string(startPos) + " 开始");
+            result.warnings.push_back("最后有效位置在 " + std::to_string(lastValidPos));
+            result.warnings.push_back("提示：确保字符串以匹配的引号结束");
+
             return result;
-        }
-
-        bool NormalStringProcessor::validateStringContent(const std::string& str,
-                                                          std::string& error,
-                                                          std::vector<std::string>& warnings) {
-            if (str.empty()) {
-                return true;  // 允许空字符串
-            }
-
-            size_t i = 0;
-            while (i < str.length()) {
-                unsigned char c = static_cast<unsigned char>(str[i]);
-
-                // 处理UTF-8字符
-                if (c >= 0x80) {
-                    auto [valid, bytesRead] = StringLiteralUtils::validateUTF8Sequence(str, i);
-                    if (!valid) {
-                        error = "无效的UTF-8序列";
-                        return false;
-                    }
-                    i += bytesRead;
-                    continue;
-                }
-
-                // 检查ASCII字符的有效性
-                if (c < 0x20 && c != '\n' && c != '\r' && c != '\t') {
-                    error = "控制字符必须通过转义序列表示";
-                    warnings.push_back("发现未转义的控制字符，建议使用转义序列表示");
-                    return false;
-                }
-
-                if (c == 0x7F) {  // DEL字符
-                    error = "无效的控制字符(DEL)";
-                    warnings.push_back("发现DEL字符，这可能会导致显示问题");
-                    return false;
-                }
-
-                if (!StringLiteralUtils::isValidStringChar(c)) {
-                    error = "字符串中包含无效字符";
-                    warnings.push_back("发现无效字符，请检查字符串内容");
-                    return false;
-                }
-
-                i++;
-            }
-
-            return true;
         }
 
     }  // namespace frontend

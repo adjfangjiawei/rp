@@ -204,24 +204,58 @@ namespace rp::frontend::unicode {
     // 新增的辅助方法
 
     bool UTF8Scanner::tryPeekCodepoint(uint32_t& codepoint) const {
-        if (!hasMore()) {
+        try {
+            // 增强的输入验证
+            if (input_.empty()) {
+                return false;
+            }
+
+            // 检查是否还有更多字符可读
+            if (!hasMore()) {
+                return false;
+            }
+
+            // 检查位置是否有效
+            size_t currentPos = position();
+            if (currentPos >= input_.length()) {
+                return false;
+            }
+
+            // 确保有足够的字符可供UTF-8解码
+            size_t remainingBytes = input_.length() - currentPos;
+            if (remainingBytes == 0) {
+                return false;
+            }
+
+            // 预检查第一个字节的有效性
+            unsigned char firstByte = static_cast<unsigned char>(input_[currentPos]);
+            if (!UnicodeCore::isValidUtf8FirstByte(firstByte)) {
+                return false;
+            }
+
+            // 获取UTF-8序列信息
+            UnicodeCore::Utf8SequenceInfo info = UnicodeCore::getUtf8SequenceInfo(input_, currentPos);
+
+            // 验证序列的有效性
+            if (!info.valid) {
+                return false;
+            }
+
+            // 确保有足够的字节来完成整个UTF-8序列
+            if (currentPos + info.length > input_.length()) {
+                return false;
+            }
+
+            // 验证码点的有效性
+            if (!UnicodeCore::isValidCodepoint(info.codepoint)) {
+                return false;
+            }
+
+            codepoint = info.codepoint;
+            return true;
+        } catch (const std::exception& e) {
             return false;
         }
-
-        size_t currentPos = position();
-        UnicodeCore::Utf8SequenceInfo info = UnicodeCore::getUtf8SequenceInfo(input_, currentPos);
-
-        if (!info.valid) {
-            return false;
-        }
-
-        // 验证码点的有效性
-        if (!UnicodeCore::isValidCodepoint(info.codepoint)) {
-            return false;
-        }
-
-        codepoint = info.codepoint;
-        return true;
     }
 
     size_t UTF8Scanner::lookAhead(size_t n) const {

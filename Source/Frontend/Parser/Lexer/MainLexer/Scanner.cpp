@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstring>
+#include <iostream>
 #include <sstream>
 
 namespace rp {
@@ -30,7 +31,11 @@ namespace rp {
         }
 
         Token Scanner::scanIdentifier() {
-            if (isAtEnd() || !isIdentifierStart(getCurrentChar())) {
+            if (isAtEnd()) {
+                return Token(TokenKind::EndOfFile);
+            }
+
+            if (!isIdentifierStart(getCurrentChar())) {
                 return Token(TokenKind::Invalid);
             }
 
@@ -173,7 +178,15 @@ namespace rp {
                     token.setText(value);
                     return token;
                 } else if (c == '\n') {
-                    reportError("Unterminated string literal");
+                    reportError("Unterminated string literal: unexpected newline");
+                    // 跳过整个无效的字符串字面量，直到找到结束引号或下一个可能的token开始
+                    while (!isAtEnd()) {
+                        updatePosition(getCurrentPos() + 1);
+                        if (getCurrentChar() == '"') {
+                            updatePosition(getCurrentPos() + 1);  // 跳过结束引号
+                            break;
+                        }
+                    }
                     return Token(TokenKind::Invalid);
                 } else {
                     value += c;

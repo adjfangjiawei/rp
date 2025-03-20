@@ -11,13 +11,6 @@ namespace rp {
             return (pos < sourceLength) ? source[pos] : '\0';
         }
 
-        bool Lexer::matchString(const std::string& str) const {
-            if (currentPos + str.length() > sourceLength) {
-                return false;
-            }
-            return std::strncmp(source + currentPos, str.c_str(), str.length()) == 0;
-        }
-
         void Lexer::recoverFromError() {
             // 尝试同步到下一个有效的token开始位置
             skipUntilNextToken();

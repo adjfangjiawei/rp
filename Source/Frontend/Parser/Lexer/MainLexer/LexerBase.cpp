@@ -1,10 +1,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <iomanip>
 #include <sstream>
 
 #include "Frontend/Parser/Lexer/MainLexer/Lexer.h"
+#include "Frontend/Parser/Lexer/Unicode/Unicode.h"
 
 namespace rp {
     namespace frontend {
@@ -178,5 +180,82 @@ namespace rp {
             return token;
         }
 
+        bool Lexer::isValidTokenStart(char c) const {
+            // 获取UTF-8字符的Unicode码点
+            std::string utf8Char(1, c);
+            size_t bytesRead = 0;
+            uint32_t codepoint = unicode::UnicodeEncoding::utf8ToCodePoint(utf8Char, bytesRead);
+
+            // 1. 检查标识符开始字符（字母和下划线等）
+            if (unicode::UnicodeCategories::isIdentifierStart(codepoint)) {
+                return true;
+            }
+
+            // 2. 检查数字字面量开始字符
+            if (unicode::UnicodeCategories::isInCategory(codepoint,
+                                                         unicode::UnicodeCategories::Category::Number_Decimal) ||
+                unicode::UnicodeCategories::isInCategory(codepoint,
+                                                         unicode::UnicodeCategories::Category::Number_Letter) ||
+                unicode::UnicodeCategories::isInCategory(codepoint,
+                                                         unicode::UnicodeCategories::Category::Number_Other)) {
+                return true;
+            }
+
+            // 3. 检查字符串和字符字面量的引号
+            if (c == '"' || c == '\'' || c == '`' || c == 'R' || c == 'L' || c == 'u' || c == 'U') {
+                return true;
+            }
+
+            // 4. 检查注释和预处理指令起始符
+            if (c == '/' || c == '#') {  // 支持 //, /* 和 # 开头的指令
+                return true;
+            }
+
+            // 5. 检查标点符号
+            if (unicode::UnicodeCategories::isInCategory(codepoint,
+                                                         unicode::UnicodeCategories::Category::Punctuation_Connector) ||
+                unicode::UnicodeCategories::isInCategory(codepoint,
+                                                         unicode::UnicodeCategories::Category::Punctuation_Dash) ||
+                unicode::UnicodeCategories::isInCategory(codepoint,
+                                                         unicode::UnicodeCategories::Category::Punctuation_Open) ||
+                unicode::UnicodeCategories::isInCategory(codepoint,
+                                                         unicode::UnicodeCategories::Category::Punctuation_Close) ||
+                unicode::UnicodeCategories::isInCategory(codepoint,
+                                                         unicode::UnicodeCategories::Category::Punctuation_Quote) ||
+                unicode::UnicodeCategories::isInCategory(codepoint,
+                                                         unicode::UnicodeCategories::Category::Punctuation_Other)) {
+                return true;
+            }
+
+            // 6. 检查运算符和其他符号
+            const char* validOperators = "+-*/%=<>!&|^~.,;()[]{}\\:?@$";
+            if (std::strchr(validOperators, c) != nullptr) {
+                return true;
+            }
+
+            // 7. 检查Unicode符号
+            if (unicode::UnicodeCategories::isInCategory(codepoint,
+                                                         unicode::UnicodeCategories::Category::Symbol_Math) ||
+                unicode::UnicodeCategories::isInCategory(codepoint,
+                                                         unicode::UnicodeCategories::Category::Symbol_Currency) ||
+                unicode::UnicodeCategories::isInCategory(codepoint,
+                                                         unicode::UnicodeCategories::Category::Symbol_Modifier) ||
+                unicode::UnicodeCategories::isInCategory(codepoint,
+                                                         unicode::UnicodeCategories::Category::Symbol_Other)) {
+                return true;
+            }
+
+            // 8. 检查特殊字符类别
+            if (unicode::UnicodeCategories::isInCategory(codepoint,
+                                                         unicode::UnicodeCategories::Category::Letter_Modifier) ||
+                unicode::UnicodeCategories::isInCategory(codepoint,
+                                                         unicode::UnicodeCategories::Category::Letter_Other)) {
+                return true;
+            }
+
+            return false;
+        }
+
     }  // namespace frontend
+
 }  // namespace rp

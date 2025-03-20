@@ -21,22 +21,49 @@ namespace rp {
         }
 
         void BaseScanner::setSource(const char* src, size_t length, const std::string& filename) {
-            if (!src && length > 0) {
-                throw std::invalid_argument("Source pointer cannot be null when length > 0");
+            // 增强的输入验证
+            if (src == nullptr) {
+                if (length > 0) {
+                    throw std::invalid_argument("Source pointer cannot be null when length > 0");
+                }
+                // 确保空输入时有一个有效的空字符串
+                source = "";
+                sourceLength = 0;
+            } else {
+                // 验证输入的有效性
+                if (length == 0) {
+                    source = "";
+                    sourceLength = 0;
+                } else {
+                    // 检查src是否指向有效的字符串
+                    try {
+                        // 尝试读取第一个字符以验证指针的有效性
+                        volatile char testChar = src[0];
+                        (void)testChar;  // 防止编译器优化
+
+                        source = src;
+                        sourceLength = length;
+
+                        // UTF-8验证
+                        std::string error;
+                        if (!unicode::UnicodeProcessing::validateUtf8String(std::string(src, length), error)) {
+                            // 记录错误但继续处理
+                            reportError("Invalid UTF-8 encoding: " + error);
+                            // 设置一个标志表示输入可能包含无效的UTF-8序列
+                            reportWarning(
+                                "Source code contains invalid UTF-8 sequences. Some characters may not be processed "
+                                "correctly.");
+                        }
+                    } catch (const std::exception& e) {
+                        throw std::invalid_argument(std::string("Invalid source pointer: ") + e.what());
+                    }
+                }
             }
 
-            source = src;
-            sourceLength = length;
             this->filename = filename;
             currentPos = 0;
             currentLine = 1;
             currentColumn = 1;
-
-            // 验证UTF-8编码
-            std::string error;
-            if (!unicode::UnicodeProcessing::validateUtf8String(std::string(src, length), error)) {
-                reportError("Invalid UTF-8 encoding: " + error);
-            }
         }
 
         void BaseScanner::setPosition(size_t pos, size_t line, size_t column) {

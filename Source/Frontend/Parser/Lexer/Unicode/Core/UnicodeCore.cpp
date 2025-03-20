@@ -83,8 +83,12 @@ namespace rp::frontend::unicode {
         }
     }
 
-    UnicodeCore::Utf8SequenceInfo UnicodeCore::getUtf8SequenceInfo(const std::string &str, size_t start) {
-        // 边界检查
+    UnicodeCore::Utf8SequenceInfo UnicodeCore::getUtf8SequenceInfo(const std::string& str, size_t start) {
+        // 增强的边界检查
+        if (str.empty()) {
+            return {0, 0, false, "Empty input string"};
+        }
+
         if (start >= str.length()) {
             return {0,
                     0,
@@ -93,128 +97,132 @@ namespace rp::frontend::unicode {
                         " (string length: " + std::to_string(str.length()) + ")"};
         }
 
-        unsigned char first = static_cast<unsigned char>(str[start]);
+        try {
+            unsigned char first = static_cast<unsigned char>(str[start]);
 
-        // 获取序列长度并验证首字节
-        size_t length = getUtf8SequenceLength(first);
-        if (length == 0) {
-            return {0, 0, false, "Invalid UTF-8 first byte: 0x" + std::to_string(static_cast<int>(first))};
-        }
+            // 获取序列长度并验证首字节
+            size_t length = getUtf8SequenceLength(first);
+            if (length == 0) {
+                return {0, 0, false, "Invalid UTF-8 first byte: 0x" + std::to_string(static_cast<int>(first))};
+            }
 
-        // 检查序列完整性
-        if (start + length > str.length()) {
-            return {0,
-                    0,
-                    false,
-                    "Incomplete UTF-8 sequence at position " + std::to_string(start) + ": expected " +
-                        std::to_string(length) + " bytes, but only " + std::to_string(str.length() - start) +
-                        " available"};
-        }
+            // 检查序列完整性
+            if (start + length > str.length()) {
+                return {0,
+                        0,
+                        false,
+                        "Incomplete UTF-8 sequence at position " + std::to_string(start) + ": expected " +
+                            std::to_string(length) + " bytes, but only " + std::to_string(str.length() - start) +
+                            " available"};
+            }
 
-        uint32_t codepoint = 0;
-        std::string error;
+            uint32_t codepoint = 0;
+            std::string error;
 
-        // 根据UTF-8序列长度解码码点
-        switch (length) {
-            case 1:
-                // ASCII字符（0xxxxxxx）
-                codepoint = first;
-                break;
-
-            case 2:
-                {
-                    // 2字节序列（110xxxxx 10xxxxxx）
-                    unsigned char second = static_cast<unsigned char>(str[start + 1]);
-                    if (!isUtf8ContinuationByte(second)) {
-                        return {0,
-                                0,
-                                false,
-                                "Invalid continuation byte in 2-byte sequence at position " +
-                                    std::to_string(start + 1) + ": 0x" + std::to_string(static_cast<int>(second))};
-                    }
-                    codepoint = ((first & 0x1F) << 6) | (second & 0x3F);
+            // 根据UTF-8序列长度解码码点
+            switch (length) {
+                case 1:
+                    // ASCII字符（0xxxxxxx）
+                    codepoint = first;
                     break;
-                }
 
-            case 3:
-                {
-                    // 3字节序列（1110xxxx 10xxxxxx 10xxxxxx）
-                    unsigned char second = static_cast<unsigned char>(str[start + 1]);
-                    unsigned char third = static_cast<unsigned char>(str[start + 2]);
-
-                    if (!isUtf8ContinuationByte(second)) {
-                        return {
-                            0,
-                            0,
-                            false,
-                            "Invalid continuation byte in 3-byte sequence at position " + std::to_string(start + 1)};
-                    }
-                    if (!isUtf8ContinuationByte(third)) {
-                        return {
-                            0,
-                            0,
-                            false,
-                            "Invalid continuation byte in 3-byte sequence at position " + std::to_string(start + 2)};
+                case 2:
+                    {
+                        // 2字节序列（110xxxxx 10xxxxxx）
+                        unsigned char second = static_cast<unsigned char>(str[start + 1]);
+                        if (!isUtf8ContinuationByte(second)) {
+                            return {0,
+                                    0,
+                                    false,
+                                    "Invalid continuation byte in 2-byte sequence at position " +
+                                        std::to_string(start + 1) + ": 0x" + std::to_string(static_cast<int>(second))};
+                        }
+                        codepoint = ((first & 0x1F) << 6) | (second & 0x3F);
+                        break;
                     }
 
-                    codepoint = ((first & 0x0F) << 12) | ((second & 0x3F) << 6) | (third & 0x3F);
-                    break;
-                }
+                case 3:
+                    {
+                        // 3字节序列（1110xxxx 10xxxxxx 10xxxxxx）
+                        unsigned char second = static_cast<unsigned char>(str[start + 1]);
+                        unsigned char third = static_cast<unsigned char>(str[start + 2]);
 
-            case 4:
-                {
-                    // 4字节序列（11110xxx 10xxxxxx 10xxxxxx 10xxxxxx）
-                    unsigned char second = static_cast<unsigned char>(str[start + 1]);
-                    unsigned char third = static_cast<unsigned char>(str[start + 2]);
-                    unsigned char fourth = static_cast<unsigned char>(str[start + 3]);
+                        if (!isUtf8ContinuationByte(second)) {
+                            return {0,
+                                    0,
+                                    false,
+                                    "Invalid continuation byte in 3-byte sequence at position " +
+                                        std::to_string(start + 1)};
+                        }
+                        if (!isUtf8ContinuationByte(third)) {
+                            return {0,
+                                    0,
+                                    false,
+                                    "Invalid continuation byte in 3-byte sequence at position " +
+                                        std::to_string(start + 2)};
+                        }
 
-                    if (!isUtf8ContinuationByte(second)) {
-                        return {
-                            0,
-                            0,
-                            false,
-                            "Invalid continuation byte in 4-byte sequence at position " + std::to_string(start + 1)};
-                    }
-                    if (!isUtf8ContinuationByte(third)) {
-                        return {
-                            0,
-                            0,
-                            false,
-                            "Invalid continuation byte in 4-byte sequence at position " + std::to_string(start + 2)};
-                    }
-                    if (!isUtf8ContinuationByte(fourth)) {
-                        return {
-                            0,
-                            0,
-                            false,
-                            "Invalid continuation byte in 4-byte sequence at position " + std::to_string(start + 3)};
+                        codepoint = ((first & 0x0F) << 12) | ((second & 0x3F) << 6) | (third & 0x3F);
+                        break;
                     }
 
-                    codepoint =
-                        ((first & 0x07) << 18) | ((second & 0x3F) << 12) | ((third & 0x3F) << 6) | (fourth & 0x3F);
-                    break;
-                }
+                case 4:
+                    {
+                        // 4字节序列（11110xxx 10xxxxxx 10xxxxxx 10xxxxxx）
+                        unsigned char second = static_cast<unsigned char>(str[start + 1]);
+                        unsigned char third = static_cast<unsigned char>(str[start + 2]);
+                        unsigned char fourth = static_cast<unsigned char>(str[start + 3]);
+
+                        if (!isUtf8ContinuationByte(second)) {
+                            return {0,
+                                    0,
+                                    false,
+                                    "Invalid continuation byte in 4-byte sequence at position " +
+                                        std::to_string(start + 1)};
+                        }
+                        if (!isUtf8ContinuationByte(third)) {
+                            return {0,
+                                    0,
+                                    false,
+                                    "Invalid continuation byte in 4-byte sequence at position " +
+                                        std::to_string(start + 2)};
+                        }
+                        if (!isUtf8ContinuationByte(fourth)) {
+                            return {0,
+                                    0,
+                                    false,
+                                    "Invalid continuation byte in 4-byte sequence at position " +
+                                        std::to_string(start + 3)};
+                        }
+
+                        codepoint =
+                            ((first & 0x07) << 18) | ((second & 0x3F) << 12) | ((third & 0x3F) << 6) | (fourth & 0x3F);
+                        break;
+                    }
+            }
+
+            // 检查过长编码
+            if (isOverlongEncoding(codepoint, length)) {
+                return {0,
+                        0,
+                        false,
+                        "Overlong UTF-8 encoding detected at position " + std::to_string(start) + ": codepoint " +
+                            std::to_string(codepoint) + " encoded using " + std::to_string(length) + " bytes"};
+            }
+
+            // 验证解码出的码点是否有效
+            if (!isValidCodepoint(codepoint)) {
+                return {0,
+                        0,
+                        false,
+                        "Invalid Unicode codepoint 0x" + std::to_string(codepoint) + " at position " +
+                            std::to_string(start)};
+            }
+
+            return {length, codepoint, true, ""};
+        } catch (const std::exception& e) {
+            return {0, 0, false, std::string("Exception occurred: ") + e.what()};
         }
-
-        // 检查过长编码
-        if (isOverlongEncoding(codepoint, length)) {
-            return {0,
-                    0,
-                    false,
-                    "Overlong UTF-8 encoding detected at position " + std::to_string(start) + ": codepoint " +
-                        std::to_string(codepoint) + " encoded using " + std::to_string(length) + " bytes"};
-        }
-
-        // 验证解码出的码点是否有效
-        if (!isValidCodepoint(codepoint)) {
-            return {
-                0,
-                0,
-                false,
-                "Invalid Unicode codepoint 0x" + std::to_string(codepoint) + " at position " + std::to_string(start)};
-        }
-
-        return {length, codepoint, true, ""};
     }
 
     size_t UnicodeCore::getUtf8ByteCount(uint32_t codepoint) {
@@ -255,9 +263,8 @@ namespace rp::frontend::unicode {
 
         // 2字节序列
         if ((firstByte & UTF8_2BYTE_MASK) == 0xC0) {
-            // 额外检查确保字节值在合法范围内 (0xC2-0xDF)
-            // 0xC0和0xC1是非法的（会导致过长编码）
-            return (firstByte >= 0xC2 && firstByte <= 0xDF) ? 2 : 0;
+            // 检查是否在合法范围内 (0xC0-0xDF)
+            return (firstByte <= 0xDF) ? 2 : 0;
         }
 
         // 3字节序列
