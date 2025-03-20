@@ -15,6 +15,17 @@ namespace rp {
             explicit CharacterLiteralLexer(std::shared_ptr<DiagnosticEngine> diagEngine = nullptr)
                 : Lexer(diagEngine) {}
 
+            // 位置管理函数
+            void setPosition(size_t pos, size_t line, size_t column) {
+                currentPos = pos;
+                currentLine = line;
+                currentColumn = column;
+            }
+
+            size_t getCurrentPos() const { return currentPos; }
+            size_t getCurrentLine() const { return currentLine; }
+            size_t getCurrentColumn() const { return currentColumn; }
+
             // 扫描字符字面量并返回对应的Token
             Token scan() {
                 if (currentPos >= sourceLength) {

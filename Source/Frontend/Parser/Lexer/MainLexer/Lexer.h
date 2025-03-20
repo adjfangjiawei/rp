@@ -1,11 +1,14 @@
+
 #pragma once
 
 #include <deque>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "Frontend/Diagnostic/Diagnostic.h"
+#include "Frontend/Parser/Lexer/LiteralsLexer/StringLiteralLexer.h"
 #include "Frontend/Parser/Lexer/MainLexer/Scanner.h"
 #include "Frontend/Parser/Lexer/Token/Token.h"
 
@@ -14,77 +17,86 @@ namespace rp {
 
         class Lexer {
           public:
-            // 默认构造函数，用于测试
+            // 构造函数
             Lexer();
-            // 带诊断引擎的构造函数
             explicit Lexer(std::shared_ptr<DiagnosticEngine> diagEngine);
+            ~Lexer() = default;
 
-            // 设置源代码
+            // 源代码管理
             void setSource(const char* src, size_t length, const std::string& filename);
 
-            // 获取下一个token
+            // Token操作
             Token nextToken();
-
-            // 预览下一个token而不消费它
             Token peekToken();
-
-            // 预览第n个token而不消费它
             Token peekToken(size_t n);
-
-            // 回退一个token
             void ungetToken(const Token& token);
 
-            // 获取当前位置的行列信息
+            // 位置信息
             std::pair<size_t, size_t> getCurrentPosition() const;
-
-            // 获取错误上下文
             std::string getErrorContext(size_t line, size_t column, size_t context_lines = 2) const;
+
+            // 错误处理
+            void reportError(const std::string& message, size_t line, size_t column);
+            void reportWarning(const std::string& message, size_t line, size_t column);
+            std::shared_ptr<DiagnosticEngine> getDiagnostics() const { return diagnostics; }
 
           protected:
             // 源代码信息
-            std::string sourceBuffer;  // 存储源代码的副本
-            const char* source;        // 指向sourceBuffer的指针
-            size_t sourceLength;
+            std::string sourceBuffer;
+            const char* source{nullptr};
+            size_t sourceLength{0};
             std::string filename;
 
-            // 当前位置信息
-            size_t currentPos;
-            size_t currentLine;
-            size_t currentColumn;
-
-            // token起始位置信息
-            size_t tokenStart;
-            size_t tokenLine;
-            size_t tokenColumn;
+            // 位置信息
+            size_t currentPos{0};
+            size_t currentLine{1};
+            size_t currentColumn{1};
+            size_t tokenStart{0};
+            size_t tokenLine{1};
+            size_t tokenColumn{1};
 
             // Token缓存
             std::deque<Token> tokenCache;
-            static const size_t MAX_LOOKAHEAD = 3;
+            static constexpr size_t MAX_LOOKAHEAD = 3;
+            static constexpr size_t MAX_CACHE_SIZE = 16;
 
-          protected:
-            // 获取诊断引擎
-            DiagnosticEngine* getDiagnostics() const { return diagnostics.get(); }
-            Token createToken(TokenKind kind, const std::string& text = "", bool consumeToken = true);
-            void saveTokenStart();
-
-          private:
             // 组件
             std::unique_ptr<Scanner> scanner;
             std::shared_ptr<DiagnosticEngine> diagnostics;
 
-            // 辅助函数
-            void skipWhitespaceAndComments();
-
+            // Token处理
+            Token createToken(TokenKind kind, const std::string& text = "", bool consumeToken = true);
+            void saveTokenStart();
             void restoreToTokenStart();
             void updatePositionFromScanner();
 
-            // 错误处理
-            void reportError(const std::string& message, size_t line, size_t column);
-            void recoverFromError();
-
-            // 缓存管理
+          private:
+            // 词法分析
             Token getNextTokenFromSource();
             void fillTokenCache(size_t n);
+
+            // 字符处理
+            void skipWhitespaceAndComments();
+            void skipSingleLineComment();
+            bool skipMultiLineComment();
+            std::optional<Token> handleStringLiteral();
+            std::optional<Token> handleCharacterLiteral();
+            std::optional<Token> handleNumberLiteral();
+
+            // 错误恢复
+            void recoverFromError();
+            void skipUntilNextToken();
+            bool isValidTokenStart(char c) const;
+
+            // 辅助函数
+            bool isAtEnd() const { return currentPos >= sourceLength; }
+            char getCurrentChar() const { return isAtEnd() ? '\0' : source[currentPos]; }
+            char peekChar(size_t offset = 1) const;
+            bool matchString(const std::string& str) const;
+
+            // 禁用拷贝和赋值
+            Lexer(const Lexer&) = delete;
+            Lexer& operator=(const Lexer&) = delete;
         };
 
     }  // namespace frontend

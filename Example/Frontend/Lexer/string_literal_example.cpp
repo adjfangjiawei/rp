@@ -48,7 +48,7 @@ int main() {
             std::string context = lexer.getErrorContext(token.getLine(), token.getColumn());
             std::cout << "Context:\n" << context << "\n\n";
         } else if (token.getKind() == TokenKind::Invalid) {
-            std::cout << "Error: " << token.getErrorMessage() << std::endl;
+            // std::cout << "Error: " << token.getErrorMessage() << std::endl;
         }
     }
 

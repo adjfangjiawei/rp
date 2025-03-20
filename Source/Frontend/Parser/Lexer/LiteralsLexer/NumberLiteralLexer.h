@@ -28,6 +28,17 @@ namespace rp {
             size_t currentLine = 1;
             size_t currentColumn = 1;
 
+            // 位置设置和获取
+            void setPosition(size_t pos, size_t line, size_t column) {
+                currentPos = pos;
+                currentLine = line;
+                currentColumn = column;
+            }
+
+            size_t getCurrentPos() const { return currentPos; }
+            size_t getCurrentLine() const { return currentLine; }
+            size_t getCurrentColumn() const { return currentColumn; }
+
           private:
             const char *source = nullptr;
             size_t sourceLength = 0;
