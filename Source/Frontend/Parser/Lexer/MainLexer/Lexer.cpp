@@ -210,21 +210,50 @@ namespace rp {
                 if (isStringStart) {
                     StringLiteralLexer stringLexer(diagnostics);
                     stringLexer.setSource(source, sourceLength, filename);
-                    stringLexer.currentPos = currentPos;
-                    stringLexer.currentLine = currentLine;
-                    stringLexer.currentColumn = currentColumn;
-                    Token token = stringLexer.scan();
+                    // 移动到实际的字符串内容开始位置
+                    // 设置字符串词法分析器的初始位置
+                    size_t stringStartPos = currentPos + prefixLen + (isRawString ? 0 : 0);
+                    size_t stringStartColumn = currentColumn + prefixLen + (isRawString ? 0 : 0);
+                    stringLexer.setSource(source, sourceLength, filename);
+                    stringLexer.setPosition(stringStartPos, currentLine, stringStartColumn);
+                    StringScanResult result = stringLexer.scan();
 
                     // 只有在成功解析时才更新位置
-                    if (token.getKind() != TokenKind::Invalid) {
-                        currentPos = stringLexer.currentPos;
-                        currentLine = stringLexer.currentLine;
-                        currentColumn = stringLexer.currentColumn;
+                    if (result.success) {
+                        currentPos = stringLexer.getCurrentPos();
+                        currentLine = stringLexer.getCurrentLine();
+                        currentColumn = stringLexer.getCurrentColumn();
+                        return result.token;
                     } else {
                         // 如果解析失败，使用错误恢复
-                        recoverFromError();
+                        Token errorToken(TokenKind::Invalid);
+                        errorToken.setError(result.error,
+                                            static_cast<unsigned int>(currentLine),
+                                            static_cast<unsigned int>(currentColumn));
+
+                        // 确保至少前进一个字符，防止死循环
+                        if (currentPos == stringLexer.getCurrentPos()) {
+                            currentPos++;
+                            currentColumn++;
+                        } else {
+                            currentPos = stringLexer.getCurrentPos();
+                            currentLine = stringLexer.getCurrentLine();
+                            currentColumn = stringLexer.getCurrentColumn();
+                        }
+
+                        // 跳过剩余的字符串内容直到找到下一个引号或换行符
+                        while (currentPos < sourceLength) {
+                            if (source[currentPos] == '"' || source[currentPos] == '\n') {
+                                currentPos++;
+                                currentColumn++;
+                                break;
+                            }
+                            currentPos++;
+                            currentColumn++;
+                        }
+
+                        return errorToken;
                     }
-                    return token;
                 }
 
                 // 运算符和标点符号

@@ -5,6 +5,9 @@
 #include <cstdint>
 #include <string>
 #include <tuple>
+
+#include "Frontend/Parser/Lexer/Token/Token.h"
+
 namespace rp {
     namespace frontend {
 
@@ -22,6 +25,16 @@ namespace rp {
             u8R    // u8R"..."
         };
 
+        // 字符串错误类型
+        enum class StringError {
+            None,
+            InvalidUTF8Sequence,
+            UnterminatedString,
+            InvalidEscapeSequence,
+            InvalidDelimiter,
+            InvalidPrefix
+        };
+
         class StringLiteralUtils {
           public:
             // 现有的方法
@@ -35,125 +48,77 @@ namespace rp {
             static size_t getUTF8ByteCount(unsigned char c);
             static bool isValidUTF8ContinuationByte(unsigned char c);
             static std::tuple<bool, size_t> validateUTF8Sequence(const std::string& str, size_t pos);
+            static bool validateCompleteUTF8String(const std::string& str, std::string& errorMsg);
 
             // 获取UTF-8字符及其长度
             static std::tuple<uint32_t, size_t> getUTF8Char(const std::string& str, size_t pos);
 
             // 字符串前缀相关功能
-            static std::tuple<StringPrefix, size_t> parseStringPrefix(const std::string& input) {
-                if (input.empty() || input[0] == '"') {
-                    return {StringPrefix::None, 0};
-                }
+            static std::tuple<StringPrefix, size_t> parseStringPrefix(const std::string& input);
+            static bool isValidStringPrefix(const std::string& prefix);
+            static bool isRawStringPrefix(StringPrefix prefix);
+            static std::string getPrefixString(StringPrefix prefix);
 
-                // 检查最长的前缀
-                if (input.length() >= 4 && input.compare(0, 3, "u8R") == 0 && input[3] == '"') {
-                    return {StringPrefix::u8R, 3};
+            // 新增：获取前缀对应的Token类型
+            static TokenKind getPrefixTokenKind(StringPrefix prefix) {
+                switch (prefix) {
+                    case StringPrefix::None:
+                        return TokenKind::StringLiteral;
+                    case StringPrefix::L:
+                        return TokenKind::WideStringLiteral;
+                    case StringPrefix::u:
+                        return TokenKind::UTF16StringLiteral;
+                    case StringPrefix::U:
+                        return TokenKind::UTF32StringLiteral;
+                    case StringPrefix::u8:
+                        return TokenKind::UTF8StringLiteral;
+                    case StringPrefix::R:
+                        return TokenKind::RawStringLiteral;
+                    case StringPrefix::LR:
+                        return TokenKind::WideStringLiteral;
+                    case StringPrefix::uR:
+                        return TokenKind::UTF16StringLiteral;
+                    case StringPrefix::UR:
+                        return TokenKind::UTF32StringLiteral;
+                    case StringPrefix::u8R:
+                        return TokenKind::UTF8StringLiteral;
+                    default:
+                        return TokenKind::Invalid;
                 }
-                if (input.length() >= 3) {
-                    if (input.compare(0, 2, "u8") == 0 && input[2] == '"') {
-                        return {StringPrefix::u8, 2};
-                    }
-                    if (input[1] == 'R' && input[2] == '"') {
-                        if (input[0] == 'L') return {StringPrefix::LR, 2};
-                        if (input[0] == 'u') return {StringPrefix::uR, 2};
-                        if (input[0] == 'U') return {StringPrefix::UR, 2};
-                    }
-                }
-                if (input.length() >= 2) {
-                    if (input[1] == '"') {
-                        if (input[0] == 'L') return {StringPrefix::L, 1};
-                        if (input[0] == 'u') return {StringPrefix::u, 1};
-                        if (input[0] == 'U') return {StringPrefix::U, 1};
-                        if (input[0] == 'R') return {StringPrefix::R, 1};
-                    }
-                }
-                return {StringPrefix::None, 0};
-            }
-
-            static bool isValidStringPrefix(const std::string& prefix) {
-                return prefix.empty() || prefix == "L" || prefix == "u" || prefix == "U" || prefix == "u8" ||
-                       prefix == "R" || prefix == "LR" || prefix == "uR" || prefix == "UR" || prefix == "u8R";
-            }
-
-            static bool isRawStringPrefix(StringPrefix prefix) {
-                return prefix == StringPrefix::R || prefix == StringPrefix::LR || prefix == StringPrefix::uR ||
-                       prefix == StringPrefix::UR || prefix == StringPrefix::u8R;
             }
 
             // 字符串处理辅助方法
             static bool isWhitespace(char c) { return c == ' ' || c == '\t'; }
+            static bool isValidStringChar(unsigned char c);
+            static bool hasValidQuotes(const std::string& str);
+            static bool isEscaped(const std::string& str, size_t pos);
+            static bool isUnescapedQuote(const std::string& str, size_t pos);
 
-            static bool isValidStringChar(unsigned char c) {
-                // ASCII范围的字符
-                if (c < 0x80) {
-                    return c >= 0x20 || c == '\t' || c == '\n' || c == '\r';
-                }
-                // 对于非ASCII字符，必须是有效的UTF-8起始字节
-                return isValidUTF8StartByte(c);
-            }
-
-            static bool hasValidQuotes(const std::string& str) {
-                return str.length() >= 2 && str.front() == '"' && str.back() == '"';
-            }
-
-            static bool isEscaped(const std::string& str, size_t pos) {
-                if (pos == 0) return false;
-
-                // 计算前面连续的反斜杠数量
-                size_t backslashCount = 0;
-                size_t i = pos - 1;
-                while (i < str.length() && i >= 0 && str[i] == '\\') {
-                    backslashCount++;
-                    if (i == 0) break;
-                    i--;
-                }
-                // 如果反斜杠数量为奇数，则字符被转义
-                return backslashCount % 2 == 1;
-            }
-
-            static bool isUnescapedQuote(const std::string& str, size_t pos) {
-                if (pos >= str.length() || str[pos] != '"') return false;
-
-                // 计算前面连续的反斜杠数量
-                size_t backslashCount = 0;
-                if (pos > 0) {
-                    size_t i = pos - 1;
-                    while (i < str.length() && i >= 0 && str[i] == '\\') {
-                        backslashCount++;
-                        if (i == 0) break;
-                        i--;
-                    }
-                }
-                // 如果反斜杠数量为偶数，则引号未被转义
-                return backslashCount % 2 == 0;
-            }
-
-            // 获取前缀对应的字符串
-            static std::string getPrefixString(StringPrefix prefix) {
-                switch (prefix) {
-                    case StringPrefix::None:
-                        return "";
-                    case StringPrefix::L:
-                        return "L";
-                    case StringPrefix::u:
-                        return "u";
-                    case StringPrefix::U:
-                        return "U";
-                    case StringPrefix::u8:
-                        return "u8";
-                    case StringPrefix::R:
-                        return "R";
-                    case StringPrefix::LR:
-                        return "LR";
-                    case StringPrefix::uR:
-                        return "uR";
-                    case StringPrefix::UR:
-                        return "UR";
-                    case StringPrefix::u8R:
-                        return "u8R";
+            // 新增：错误处理方法
+            static std::string getErrorMessage(StringError error, size_t pos = 0, const std::string& context = "") {
+                switch (error) {
+                    case StringError::InvalidUTF8Sequence:
+                        return "Invalid UTF-8 sequence at position " + std::to_string(pos);
+                    case StringError::UnterminatedString:
+                        return "Unterminated string literal";
+                    case StringError::InvalidEscapeSequence:
+                        return "Invalid escape sequence at position " + std::to_string(pos);
+                    case StringError::InvalidDelimiter:
+                        return "Invalid raw string delimiter: " + context;
+                    case StringError::InvalidPrefix:
+                        return "Invalid string prefix: " + context;
                     default:
-                        return "";
+                        return "Unknown error";
                 }
+            }
+
+            // 新增：验证原始字符串分隔符
+            static bool isValidRawStringDelimiter(const std::string& delimiter) {
+                if (delimiter.empty()) return true;
+                for (char c : delimiter) {
+                    if (!std::isalnum(c) && c != '_') return false;
+                }
+                return true;
             }
         };
 
