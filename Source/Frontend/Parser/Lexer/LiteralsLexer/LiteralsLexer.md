@@ -24,6 +24,7 @@ struct StringScanResult {
     size_t errorPosition;               // 错误位置
     bool hasWarnings;                   // 是否有警告
     std::vector<std::string> warnings;  // 警告信息列表
+    size_t consumed;                    // 消耗的字符数
 };
 ```
 
@@ -56,6 +57,161 @@ public:
 };
 ```
 
+### StringPrefix 枚举
+```cpp
+enum class StringPrefix {
+    None,  // 无前缀
+    L,     // L"..."
+    u,     // u"..."
+    U,     // U"..."
+    u8,    // u8"..."
+    R,     // R"..."
+    LR,    // LR"..."
+    uR,    // uR"..."
+    UR,    // UR"..."
+    u8R    // u8R"..."
+};
+```
+
+### StringError 枚举
+```cpp
+enum class StringError {
+    None,
+    InvalidUTF8Sequence,
+    UnterminatedString,
+    InvalidEscapeSequence,
+    InvalidDelimiter,
+    InvalidPrefix
+};
+```
+
+### QuoteType 枚举
+```cpp
+enum class QuoteType {
+    None,
+    DoubleQuote,       // "
+    SingleQuote,       // '
+    ChineseQuote,      // 「」
+    ChineseBookQuote,  // 『』
+    SmartQuote,        // ''
+    SmartDoubleQuote   // ""
+};
+```
+
+### EscapeSequenceResult 结构体
+```cpp
+struct EscapeSequenceResult {
+    std::string value;     // 处理后的字符串值
+    size_t consumed;       // 消耗的字符数
+    bool success;          // 是否成功
+    std::string error;     // 错误信息
+    size_t errorPosition;  // 错误位置
+};
+```
+
+### UTF8ProcessResult 结构体
+```cpp
+struct UTF8ProcessResult {
+    bool success;
+    size_t consumed;
+    std::string content;
+    std::vector<std::string> warnings;
+    std::string error;
+};
+```
+
+### DiagnosticsHandler 类
+```cpp
+class DiagnosticsHandler {
+public:
+    explicit DiagnosticsHandler(const std::shared_ptr<DiagnosticEngine>& diagnostics);
+    void handleDiagnostics(const std::string& error,
+                          const std::vector<std::string>& warnings,
+                          const SourceLocation& loc);
+    void reportError(const std::string& error, const SourceLocation& loc);
+    void reportWarning(const std::string& warning, const SourceLocation& loc);
+};
+```
+
+### EscapeSequenceProcessor 类
+```cpp
+class EscapeSequenceProcessor {
+public:
+    static std::string processEscapeSequence(const std::string& source, size_t& currentPos, std::string& error);
+    static bool isValidEscapeSequence(char c);
+    static std::optional<size_t> getExpectedLength(char escapeChar);
+};
+```
+
+### PrefixProcessor 类
+```cpp
+class PrefixProcessor {
+public:
+    static std::tuple<StringPrefix, size_t> parsePrefix(const std::string& source,
+                                                       size_t currentPos,
+                                                       size_t sourceLength);
+    static bool isValidPrefix(const std::string& prefix);
+    static std::string getPrefixString(StringPrefix prefix);
+};
+```
+
+### StringLiteralUtils 类
+```cpp
+class StringLiteralUtils {
+public:
+    static bool isOctalDigit(char c);
+    static bool isHexDigit(char c);
+    static int hexDigitToInt(char c);
+    static std::string unicodeToUTF8(unsigned int codepoint);
+    static bool isValidUTF8StartByte(unsigned char c);
+    static size_t getUTF8ByteCount(unsigned char c);
+    static bool isValidUTF8ContinuationByte(unsigned char c);
+    static std::tuple<bool, size_t> validateUTF8Sequence(const std::string& str, size_t pos);
+    static bool validateCompleteUTF8String(const std::string& str, std::string& errorMsg);
+    static std::tuple<uint32_t, size_t> getUTF8Char(const std::string& str, size_t pos);
+    static std::tuple<StringPrefix, size_t> parseStringPrefix(const std::string& input);
+    static bool isValidStringPrefix(const std::string& prefix);
+    static bool isRawStringPrefix(StringPrefix prefix);
+    static std::string getPrefixString(StringPrefix prefix);
+    static TokenKind getPrefixTokenKind(StringPrefix prefix);
+};
+```
+
+### StringValidator 类
+```cpp
+class StringValidator {
+public:
+    explicit StringValidator(const StringValidationOptions& options);
+    bool validate(const std::string& content, std::string& error, std::vector<std::string>& warnings);
+};
+```
+
+### TokenCreator 类
+```cpp
+class TokenCreator {
+public:
+    static Token createStringToken(const std::string& content,
+                                 StringPrefix prefix,
+                                 size_t line,
+                                 size_t column,
+                                 const std::string& filename);
+};
+```
+
+### UnicodeProcessor 类
+```cpp
+class UnicodeProcessor {
+public:
+    static std::string processUnicodeEscape(const std::string& source,
+                                          size_t& currentPos,
+                                          bool isLongForm,
+                                          std::string& error);
+    static std::string codePointToUTF8(uint32_t codepoint);
+    static bool isValidCodePoint(uint32_t codepoint);
+    static std::string processHexEscape(const std::string& source, size_t& currentPos, std::string& error);
+};
+```
+
 ## 数字字面量处理
 
 ### NumberLiteralLexer 类
@@ -65,9 +221,10 @@ public:
     explicit NumberLiteralLexer(std::shared_ptr<DiagnosticEngine> diagnostics);
     void setSource(const char *src, size_t length, const std::string &file);
     Token scan();
-    size_t currentPos;
-    size_t currentLine;
-    size_t currentColumn;
+    size_t getCurrentPos() const;
+    size_t getCurrentLine() const;
+    size_t getCurrentColumn() const;
+    void setPosition(size_t pos, size_t line, size_t column);
 };
 ```
 
@@ -84,5 +241,9 @@ public:
                                       long long &value,
                                       std::string &error);
     static bool validateCharacterLiteral(const std::string &str, std::string &error);
+    size_t getCurrentPos() const;
+    size_t getCurrentLine() const;
+    size_t getCurrentColumn() const;
+    void setPosition(size_t pos, size_t line, size_t column);
 };
 ```

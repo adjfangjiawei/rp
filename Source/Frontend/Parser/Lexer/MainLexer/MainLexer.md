@@ -34,6 +34,30 @@ class BaseScanner {
     bool isEndOfFile() const;
     bool hasMoreChars() const;
     size_t getRemainingLength() const;
+
+protected:
+    // Token创建辅助函数
+    Token createToken(TokenKind kind, const std::string& text = "", size_t startPos = 0);
+    Token createToken(TokenKind kind, size_t startPos, size_t length);
+
+    // 安全的字符访问
+    char getCurrentChar() const;
+    char peekChar(size_t offset = 1) const;
+
+    // 字符处理辅助函数
+    bool isAtLineEnd() const;
+    void skipLineEnd();
+    void skipWhitespace();
+    bool matchString(const char* str, size_t length) const;
+    bool matchChar(char c) const;
+
+    // 位置计算辅助函数
+    void calculateLineAndColumn(size_t pos, size_t& line, size_t& column) const;
+    std::pair<size_t, size_t> getLineAndColumn(size_t pos) const;
+
+    // 错误处理
+    void reportError(const std::string& message);
+    void reportWarning(const std::string& message);
 };
 ```
 
@@ -93,6 +117,13 @@ class Lexer {
     void reportError(const std::string& message, size_t line, size_t column);
     void reportWarning(const std::string& message, size_t line, size_t column);
     std::shared_ptr<DiagnosticEngine> getDiagnostics() const;
+
+protected:
+    // Token处理
+    Token createToken(TokenKind kind, const std::string& text = "", bool consumeToken = true);
+    void saveTokenStart();
+    void restoreToTokenStart();
+    void updatePositionFromScanner();
 };
 ```
 
@@ -159,6 +190,7 @@ class UTF8Scanner : public BaseScanner {
     // 重写基类方法
     void setSource(const char* src, size_t length, const std::string& filename) override;
 
+protected:
     // UTF-8序列处理
     std::string scanUTF8Sequence();
     bool isValidUTF8Continuation(char c) const;
