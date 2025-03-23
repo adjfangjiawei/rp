@@ -8,6 +8,7 @@
 #include "Frontend/Parser/Lexer/Token/Token.h"
 #include "StringLiteralLexer/DiagnosticsHandler.h"
 #include "StringLiteralLexer/PrefixProcessor.h"
+#include "StringLiteralLexer/StringLiteralUtils.h"
 #include "StringLiteralLexer/StringValidator.h"
 #include "StringLiteralLexer/TokenCreator.h"
 #include "StringLiteralLexer/UnicodeProcessor.h"

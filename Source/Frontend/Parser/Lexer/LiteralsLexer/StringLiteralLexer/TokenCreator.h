@@ -1,14 +1,14 @@
-
 #ifndef RP_TOKEN_CREATOR_H
 #define RP_TOKEN_CREATOR_H
 
 #include <string>
 
-#include "Frontend/Parser/Lexer/LiteralsLexer/StringLiteralLexer/StringLiteralUtils.h"
-#include "Frontend/Parser/Lexer/Token/Token.h"
-
 namespace rp {
     namespace frontend {
+
+        class Token;
+        enum class TokenKind;
+        enum class StringPrefix;
 
         class TokenCreator {
           public:

@@ -13,6 +13,7 @@
 #include "Frontend/Parser/Lexer/LiteralsLexer/StringLiteralLexer/TokenCreator.h"
 #include "Frontend/Parser/Lexer/LiteralsLexer/StringLiteralLexer/UnicodeProcessor.h"
 using namespace std::string_literals;
+
 namespace rp {
     namespace frontend {
 
@@ -54,14 +55,9 @@ namespace rp {
                 return result;
             }
 
-            // 解析前缀
-            auto [prefix, prefixLength] = PrefixProcessor::parsePrefix(source, currentPos, sourceLength);
-            if (!StringLiteralUtils::isValidStringPrefix(StringLiteralUtils::getPrefixString(prefix))) {
-                diagnosticsHandler->reportError(
-                    "Invalid string prefix",
-                    SourceLocation{filename, static_cast<unsigned>(currentLine), static_cast<unsigned>(currentColumn)});
-                return result;
-            }
+            // 使用StringLiteralUtils解析前缀
+            auto [prefix, prefixLength] = StringLiteralUtils::parseStringPrefix(source.substr(currentPos));
+            std::string prefixStr = StringLiteralUtils::getPrefixString(prefix);
 
             // 更新前缀的列位置
             for (size_t i = 0; i < prefixLength; ++i) {
@@ -89,6 +85,9 @@ namespace rp {
                 result.token = rawResult.token;
                 result.success = true;
                 result.consumed = prefixLength + rawResult.consumed;
+                // 使用处理结果中的位置信息
+                currentLine = rawResult.endPos.line;
+                currentColumn = rawResult.endPos.column;
             } else {
                 auto normalResult = NormalStringProcessor::processNormalStringLiteral(
                     source, currentPos + prefixLength, prefix, startLoc);

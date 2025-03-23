@@ -1,11 +1,10 @@
 #ifndef ESCAPESEQUENCEPROCESSOR_H
 #define ESCAPESEQUENCEPROCESSOR_H
 
+#include <stdint.h>
+
 #include <optional>
 #include <string>
-
-#include "StringLiteralUtils.h"
-
 namespace rp {
     namespace frontend {
 
@@ -26,27 +25,7 @@ namespace rp {
             static bool isValidEscapeSequence(char c);
 
             // 获取转义序列的预期长度（不包括前导反斜杠）
-            static std::optional<size_t> getExpectedLength(char escapeChar) {
-                switch (escapeChar) {
-                    case 'x':
-                        return 2;  // \xHH
-                    case 'u':
-                        return 4;  // \uHHHH
-                    case 'U':
-                        return 8;  // \UHHHHHHHH
-                    case '0':
-                    case '1':
-                    case '2':
-                    case '3':
-                    case '4':
-                    case '5':
-                    case '6':
-                    case '7':
-                        return 3;  // 最多3位八进制数
-                    default:
-                        return 1;  // 简单转义字符
-                }
-            }
+            static std::optional<size_t> getExpectedLength(char escapeChar);
 
           private:
             // 处理各种转义序列
@@ -56,9 +35,7 @@ namespace rp {
 
             // 辅助方法
             static bool isValidUnicodeEscape(const std::string& source, size_t pos, size_t length);
-            static bool isValidSurrogateCodePoint(uint32_t codepoint) {
-                return codepoint < 0xD800 || codepoint > 0xDFFF;
-            }
+            static bool isValidSurrogateCodePoint(uint32_t codepoint);
             static std::string getDetailedErrorMessage(const std::string& basicError);
         };
 

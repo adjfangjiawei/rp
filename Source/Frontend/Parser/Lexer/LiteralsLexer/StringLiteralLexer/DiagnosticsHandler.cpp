@@ -1,5 +1,6 @@
-
 #include "DiagnosticsHandler.h"
+
+#include "Frontend/Diagnostic/Diagnostic.h"
 
 namespace rp {
     namespace frontend {

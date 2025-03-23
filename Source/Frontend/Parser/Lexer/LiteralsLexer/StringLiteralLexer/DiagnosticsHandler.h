@@ -1,4 +1,3 @@
-
 #ifndef RP_DIAGNOSTICS_HANDLER_H
 #define RP_DIAGNOSTICS_HANDLER_H
 
@@ -6,10 +5,11 @@
 #include <string>
 #include <vector>
 
-#include "Frontend/Diagnostic/Diagnostic.h"
-
 namespace rp {
     namespace frontend {
+
+        class DiagnosticEngine;
+        struct SourceLocation;
 
         class DiagnosticsHandler {
           public:

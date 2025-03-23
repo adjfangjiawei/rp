@@ -1,7 +1,9 @@
-
 #include "StringValidator.h"
 
-#include "Frontend/Parser/Lexer/Unicode/Unicode.h"
+#include <stdexcept>
+#include <string>
+
+#include "Frontend/Parser/Lexer/Unicode/Encoding/UnicodeEncoding.h"
 
 namespace rp {
     namespace frontend {

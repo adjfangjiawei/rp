@@ -4,12 +4,15 @@
 #include <string>
 #include <vector>
 
-#include "Frontend/Diagnostic/Diagnostic.h"
-#include "Frontend/Parser/Lexer/Token/Token.h"
 #include "PrefixProcessor.h"
+#include "StringLiteralUtils.h"
 #include "StringProcessorCommon.h"
+
 namespace rp {
     namespace frontend {
+
+        class Token;
+        struct SourceLocation;
 
         // 位置信息结构体（与NormalStringProcessor保持一致）
         struct RawPositionInfo {
@@ -20,7 +23,7 @@ namespace rp {
         };
 
         struct RawStringResult {
-            Token token;                        // 处理后的Token
+            Token& token;                       // 处理后的Token
             bool success;                       // 是否成功
             std::string error;                  // 错误信息
             size_t errorPosition;               // 错误位置

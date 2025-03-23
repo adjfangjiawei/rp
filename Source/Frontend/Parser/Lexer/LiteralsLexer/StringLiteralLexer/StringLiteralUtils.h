@@ -1,4 +1,3 @@
-
 #ifndef STRINGLITERALUTILS_H
 #define STRINGLITERALUTILS_H
 
@@ -6,10 +5,10 @@
 #include <string>
 #include <tuple>
 
-#include "Frontend/Parser/Lexer/Token/Token.h"
-
 namespace rp {
     namespace frontend {
+
+        enum class TokenKind;
 
         // 字符串字面量前缀类型
         enum class StringPrefix {
@@ -59,67 +58,21 @@ namespace rp {
             static bool isRawStringPrefix(StringPrefix prefix);
             static std::string getPrefixString(StringPrefix prefix);
 
-            // 新增：获取前缀对应的Token类型
-            static TokenKind getPrefixTokenKind(StringPrefix prefix) {
-                switch (prefix) {
-                    case StringPrefix::None:
-                        return TokenKind::StringLiteral;
-                    case StringPrefix::L:
-                        return TokenKind::WideStringLiteral;
-                    case StringPrefix::u:
-                        return TokenKind::UTF16StringLiteral;
-                    case StringPrefix::U:
-                        return TokenKind::UTF32StringLiteral;
-                    case StringPrefix::u8:
-                        return TokenKind::UTF8StringLiteral;
-                    case StringPrefix::R:
-                        return TokenKind::RawStringLiteral;
-                    case StringPrefix::LR:
-                        return TokenKind::WideStringLiteral;
-                    case StringPrefix::uR:
-                        return TokenKind::UTF16StringLiteral;
-                    case StringPrefix::UR:
-                        return TokenKind::UTF32StringLiteral;
-                    case StringPrefix::u8R:
-                        return TokenKind::UTF8StringLiteral;
-                    default:
-                        return TokenKind::Invalid;
-                }
-            }
+            // 获取前缀对应的Token类型
+            static TokenKind getPrefixTokenKind(StringPrefix prefix);
 
             // 字符串处理辅助方法
-            static bool isWhitespace(char c) { return c == ' ' || c == '\t'; }
+            static bool isWhitespace(char c);
             static bool isValidStringChar(unsigned char c);
             static bool hasValidQuotes(const std::string& str);
             static bool isEscaped(const std::string& str, size_t pos);
             static bool isUnescapedQuote(const std::string& str, size_t pos);
 
-            // 新增：错误处理方法
-            static std::string getErrorMessage(StringError error, size_t pos = 0, const std::string& context = "") {
-                switch (error) {
-                    case StringError::InvalidUTF8Sequence:
-                        return "Invalid UTF-8 sequence at position " + std::to_string(pos);
-                    case StringError::UnterminatedString:
-                        return "Unterminated string literal";
-                    case StringError::InvalidEscapeSequence:
-                        return "Invalid escape sequence at position " + std::to_string(pos);
-                    case StringError::InvalidDelimiter:
-                        return "Invalid raw string delimiter: " + context;
-                    case StringError::InvalidPrefix:
-                        return "Invalid string prefix: " + context;
-                    default:
-                        return "Unknown error";
-                }
-            }
+            // 错误处理方法
+            static std::string getErrorMessage(StringError error, size_t pos = 0, const std::string& context = "");
 
-            // 新增：验证原始字符串分隔符
-            static bool isValidRawStringDelimiter(const std::string& delimiter) {
-                if (delimiter.empty()) return true;
-                for (char c : delimiter) {
-                    if (!std::isalnum(c) && c != '_') return false;
-                }
-                return true;
-            }
+            // 验证原始字符串分隔符
+            static bool isValidRawStringDelimiter(const std::string& delimiter);
         };
 
     }  // namespace frontend

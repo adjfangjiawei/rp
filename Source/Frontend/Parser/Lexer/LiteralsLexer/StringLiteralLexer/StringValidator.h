@@ -1,4 +1,3 @@
-
 #ifndef RP_STRING_VALIDATOR_H
 #define RP_STRING_VALIDATOR_H
 
@@ -17,6 +16,7 @@ namespace rp {
             bool allowChineseQuotes = true;   // 是否允许中文引号
             bool allowSmartQuotes = true;     // 是否允许智能引号
         };
+
         class StringValidator {
           public:
             // 构造函数，设置验证选项

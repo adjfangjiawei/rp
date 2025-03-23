@@ -2,14 +2,18 @@
 
 #include <string>
 #include <string_view>
+#include <tuple>
+#include <vector>
 
-#include "Frontend/Diagnostic/Diagnostic.h"
-#include "Frontend/Parser/Lexer/Token/Token.h"
-#include "Frontend/Parser/Lexer/Token/TokenKind.h"
 #include "PrefixProcessor.h"
+#include "StringLiteralUtils.h"
 #include "StringProcessorCommon.h"
+
 namespace rp {
     namespace frontend {
+
+        class Token;
+        struct SourceLocation;
 
         // 位置信息结构体
         struct PositionInfo {
@@ -21,7 +25,7 @@ namespace rp {
 
         // 字符串处理结果
         struct StringProcessResult {
-            Token token;                                      // 处理后的Token
+            Token& token;                                     // 处理后的Token
             bool success;                                     // 是否成功
             std::string error;                                // 错误信息
             size_t errorPosition;                             // 错误位置

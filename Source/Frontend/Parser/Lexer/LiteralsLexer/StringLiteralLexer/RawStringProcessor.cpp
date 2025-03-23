@@ -1,15 +1,17 @@
-
 #include "RawStringProcessor.h"
 
 #include <iostream>
 #include <sstream>
 
-#include "Frontend/Parser/Lexer/LiteralsLexer/StringLiteralLexer/PrefixProcessor.h"
+#include "Frontend/Diagnostic/Diagnostic.h"
+#include "Frontend/Parser/Lexer/Token/Token.h"
+#include "Frontend/Parser/Lexer/Token/TokenKind.h"
 #include "Frontend/Parser/Lexer/Unicode/Core/UnicodeCore.h"
 #include "Frontend/Parser/Lexer/Unicode/Encoding/UnicodeEncoding.h"
 #include "Frontend/Parser/Lexer/Unicode/Processing/UnicodeProcessing.h"
 #include "Frontend/Parser/Lexer/Unicode/Unicode.h"
 #include "StringLiteralUtils.h"
+
 namespace rp {
     namespace frontend {
 
@@ -26,11 +28,13 @@ namespace rp {
                                                                     size_t startPos,
                                                                     StringPrefix prefix,
                                                                     const SourceLocation& startLoc) {
-            RawStringResult result;
+            // 使用StringLiteralUtils获取正确的TokenKind
+            TokenKind tokenKind = StringLiteralUtils::getPrefixTokenKind(prefix);
+            auto token = new Token(tokenKind, startLoc.line, startLoc.column, startLoc.filename);
+            RawStringResult result{.token = *token};
             result.success = false;
             result.hasWarnings = false;
             result.consumed = 0;
-            result.token = Token(TokenKind::Invalid, startLoc.line, startLoc.column, startLoc.filename);
 
             // 初始化位置信息
             RawPositionInfo currentPos(startLoc.line, startLoc.column);
@@ -85,7 +89,7 @@ namespace rp {
             }
 
             // 创建成功的Token
-            result.token = Token(TokenKind::RawStringLiteral, startLoc.line, startLoc.column, startLoc.filename);
+            result.token = Token(tokenKind, startLoc.line, startLoc.column, startLoc.filename);
             result.token.setText(source.substr(contentStart, closingResult.contentConsumed));
             result.token.setStringInfo(true, delimiterResult.delimiter);
             result.success = true;
@@ -220,16 +224,7 @@ namespace rp {
         }
 
         bool RawStringProcessor::isValidDelimiter(const std::string& delimiter) {
-            // 分隔符只能包含以下字符：
-            // - 字母（a-z, A-Z）
-            // - 数字（0-9）
-            // - 下划线（_）
-            for (char c : delimiter) {
-                if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
-                    return false;
-                }
-            }
-            return true;
+            return StringLiteralUtils::isValidRawStringDelimiter(delimiter);
         }
 
         UTF8ProcessResult RawStringProcessor::processUTF8Char(const std::string& source, size_t startPos) {

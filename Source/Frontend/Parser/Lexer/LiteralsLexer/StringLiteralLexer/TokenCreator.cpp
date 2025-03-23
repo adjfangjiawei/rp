@@ -1,7 +1,10 @@
-
 #include "TokenCreator.h"
 
 #include <limits>
+
+#include "Frontend/Parser/Lexer/LiteralsLexer/StringLiteralLexer/StringLiteralUtils.h"
+#include "Frontend/Parser/Lexer/Token/Token.h"
+#include "Frontend/Parser/Lexer/Token/TokenKind.h"
 
 namespace rp {
     namespace frontend {
@@ -15,8 +18,8 @@ namespace rp {
                 return errorToken;
             }
 
-            // 获取对应的Token类型
-            TokenKind kind = getPrefixTokenKind(prefix);
+            // 使用StringLiteralUtils获取对应的Token类型
+            TokenKind kind = StringLiteralUtils::getPrefixTokenKind(prefix);
 
             // 创建Token
             Token token(kind, static_cast<unsigned>(line), static_cast<unsigned>(column), filename);
@@ -78,26 +81,8 @@ namespace rp {
         }
 
         TokenKind TokenCreator::getPrefixTokenKind(StringPrefix prefix) {
-            switch (prefix) {
-                case StringPrefix::None:
-                    return TokenKind::StringLiteral;
-                case StringPrefix::L:
-                    return TokenKind::WideStringLiteral;
-                case StringPrefix::u8:
-                    return TokenKind::UTF8StringLiteral;
-                case StringPrefix::u:
-                    return TokenKind::UTF16StringLiteral;
-                case StringPrefix::U:
-                    return TokenKind::UTF32StringLiteral;
-                case StringPrefix::R:
-                case StringPrefix::LR:
-                case StringPrefix::u8R:
-                case StringPrefix::uR:
-                case StringPrefix::UR:
-                    return TokenKind::RawStringLiteral;
-                default:
-                    return TokenKind::Invalid;
-            }
+            // 使用StringLiteralUtils中的方法
+            return StringLiteralUtils::getPrefixTokenKind(prefix);
         }
 
         bool TokenCreator::isValidPosition(size_t line, size_t column) {

@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include <string>
@@ -7,6 +6,9 @@
 
 namespace rp {
     namespace frontend {
+
+        // 前向声明
+        class SuffixProcessor;
 
         class FloatLiteralLexer : public NumberLiteralBase {
           public:

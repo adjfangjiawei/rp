@@ -7,6 +7,9 @@
 namespace rp {
     namespace frontend {
 
+        // 前向声明
+        class SuffixProcessor;
+
         class BinaryLiteralLexer : public NumberLiteralBase {
           public:
             static bool processBinaryLiteral(const std::string &input,

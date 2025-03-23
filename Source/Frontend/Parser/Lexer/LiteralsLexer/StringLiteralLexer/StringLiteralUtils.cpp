@@ -1,10 +1,65 @@
 #include "StringLiteralUtils.h"
 
+#include "Frontend/Parser/Lexer/Token/TokenKind.h"
 #include "Frontend/Parser/Lexer/Unicode/Core/UnicodeCore.h"
 #include "Frontend/Parser/Lexer/Unicode/Encoding/UnicodeEncoding.h"
 
 namespace rp {
     namespace frontend {
+
+        TokenKind StringLiteralUtils::getPrefixTokenKind(StringPrefix prefix) {
+            switch (prefix) {
+                case StringPrefix::None:
+                    return TokenKind::StringLiteral;
+                case StringPrefix::L:
+                    return TokenKind::WideStringLiteral;
+                case StringPrefix::u:
+                    return TokenKind::UTF16StringLiteral;
+                case StringPrefix::U:
+                    return TokenKind::UTF32StringLiteral;
+                case StringPrefix::u8:
+                    return TokenKind::UTF8StringLiteral;
+                case StringPrefix::R:
+                    return TokenKind::RawStringLiteral;
+                case StringPrefix::LR:
+                    return TokenKind::WideStringLiteral;
+                case StringPrefix::uR:
+                    return TokenKind::UTF16StringLiteral;
+                case StringPrefix::UR:
+                    return TokenKind::UTF32StringLiteral;
+                case StringPrefix::u8R:
+                    return TokenKind::UTF8StringLiteral;
+                default:
+                    return TokenKind::Invalid;
+            }
+        }
+
+        bool StringLiteralUtils::isWhitespace(char c) { return c == ' ' || c == '\t'; }
+
+        std::string StringLiteralUtils::getErrorMessage(StringError error, size_t pos, const std::string& context) {
+            switch (error) {
+                case StringError::InvalidUTF8Sequence:
+                    return "Invalid UTF-8 sequence at position " + std::to_string(pos);
+                case StringError::UnterminatedString:
+                    return "Unterminated string literal";
+                case StringError::InvalidEscapeSequence:
+                    return "Invalid escape sequence at position " + std::to_string(pos);
+                case StringError::InvalidDelimiter:
+                    return "Invalid raw string delimiter: " + context;
+                case StringError::InvalidPrefix:
+                    return "Invalid string prefix: " + context;
+                default:
+                    return "Unknown error";
+            }
+        }
+
+        bool StringLiteralUtils::isValidRawStringDelimiter(const std::string& delimiter) {
+            if (delimiter.empty()) return true;
+            for (char c : delimiter) {
+                if (!std::isalnum(c) && c != '_') return false;
+            }
+            return true;
+        }
 
         bool StringLiteralUtils::isOctalDigit(char c) { return c >= '0' && c <= '7'; }
 

@@ -1,10 +1,13 @@
-
 #include "NormalStringProcessor.h"
 
 #include "../StringLiteralLexer/EscapeSequenceProcessor.h"
 #include "../StringLiteralLexer/StringLiteralUtils.h"
+#include "Frontend/Diagnostic/Diagnostic.h"
+#include "Frontend/Parser/Lexer/Token/Token.h"
+#include "Frontend/Parser/Lexer/Token/TokenKind.h"
 #include "Frontend/Parser/Lexer/Unicode/Encoding/UnicodeEncoding.h"
 #include "Frontend/Parser/Lexer/Unicode/Unicode.h"
+#include "TokenBase.h"
 
 namespace rp {
     namespace frontend {
@@ -147,7 +150,10 @@ namespace rp {
                                                                               size_t startPos,
                                                                               StringPrefix prefix,
                                                                               const SourceLocation& startLoc) {
-            StringProcessResult result;
+            // 创建一个新的Token，使用StringLiteralUtils来获取正确的TokenKind
+            TokenKind tokenKind = StringLiteralUtils::getPrefixTokenKind(prefix);
+            auto tokenTemp = new Token(tokenKind);
+            StringProcessResult result{.token = *tokenTemp};
             result.success = false;
             result.consumed = 0;
 
@@ -155,7 +161,6 @@ namespace rp {
             PositionInfo currentPos(startLoc.line, startLoc.column);
 
             if (startPos >= source.length()) {
-                result.token = Token(TokenKind::Invalid);
                 result.error = "字符串必须以引号开始";
                 result.errorPosition = startPos;
                 result.endPos = currentPos;
@@ -165,7 +170,6 @@ namespace rp {
             // 获取引号类型
             auto [quoteType, quoteLength] = getQuoteType(source, startPos);
             if (quoteType == QuoteType::None) {
-                result.token = Token(TokenKind::Invalid);
                 result.error = "字符串必须以引号开始（支持 \", ', 「, 『, ',\"）";
                 result.errorPosition = startPos;
                 result.endPos = currentPos;
@@ -189,7 +193,6 @@ namespace rp {
                 auto [endQuoteType, endQuoteLength] = getQuoteType(source, pos);
                 if (endQuoteType == quoteType && !StringLiteralUtils::isEscaped(source, pos)) {
                     // 成功找到结束引号
-                    result.token = Token(TokenKind::StringLiteral);
                     result.token.setText(source.substr(startPos, pos + endQuoteLength - startPos));
                     result.token.line = static_cast<unsigned int>(startLoc.line);
                     result.token.column = static_cast<unsigned int>(startLoc.column);
@@ -218,7 +221,6 @@ namespace rp {
                     updatePosition(currentPos, '\\');
 
                     if (pos + 1 >= source.length()) {
-                        result.token = Token(TokenKind::Invalid);
                         result.error = "不完整的转义序列";
                         result.errorPosition = pos;
                         result.consumed = pos - startPos;
@@ -231,7 +233,6 @@ namespace rp {
                         // 处理行继续符
                         auto multiLineResult = processMultiLineString(source, pos, currentPos);
                         if (!multiLineResult.success || multiLineResult.lineCount > MAX_LINES) {
-                            result.token = Token(TokenKind::Invalid);
                             result.error = "字符串超过最大行数限制";
                             result.errorPosition = pos;
                             result.consumed = pos - startPos;
@@ -278,7 +279,6 @@ namespace rp {
                 // 处理换行符
                 if (source[pos] == '\n' || source[pos] == '\r') {
                     // 遇到未转义的换行符时，继续解析多行字符串
-                    result.token = Token(TokenKind::Invalid);
                     result.token.line = static_cast<unsigned int>(startLoc.line);
                     result.token.column = static_cast<unsigned int>(startLoc.column);
                     result.error = "字符串中包含未转义的换行符";
@@ -328,7 +328,6 @@ namespace rp {
             }
 
             // 如果到达这里，说明没有找到结束引号
-            result.token = Token(TokenKind::Invalid);
             result.error = "未终止的字符串字面量";
             result.errorPosition = startPos;
             result.consumed = lastValidPos - startPos;

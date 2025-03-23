@@ -11,6 +11,32 @@
 namespace rp {
     namespace frontend {
 
+        std::optional<size_t> EscapeSequenceProcessor::getExpectedLength(char escapeChar) {
+            switch (escapeChar) {
+                case 'x':
+                    return 2;  // \xHH
+                case 'u':
+                    return 4;  // \uHHHH
+                case 'U':
+                    return 8;  // \UHHHHHHHH
+                case '0':
+                case '1':
+                case '2':
+                case '3':
+                case '4':
+                case '5':
+                case '6':
+                case '7':
+                    return 3;  // 最多3位八进制数
+                default:
+                    return 1;  // 简单转义字符
+            }
+        }
+
+        bool EscapeSequenceProcessor::isValidSurrogateCodePoint(uint32_t codepoint) {
+            return codepoint < 0xD800 || codepoint > 0xDFFF;
+        }
+
         std::string EscapeSequenceProcessor::processEscapeSequence(const std::string& source,
                                                                    size_t& currentPos,
                                                                    std::string& error) {
