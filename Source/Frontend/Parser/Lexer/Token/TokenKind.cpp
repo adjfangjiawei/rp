@@ -4,71 +4,89 @@
 
 namespace rp {
     namespace frontend {
-        namespace {
-            // Token类型的范围定义
-            enum class TokenRange {
-                BaseStart = 0,
-                BaseEnd = 99,
-                KeywordStart = 100,
-                KeywordEnd = 199,
-                OperatorStart = 200,
-                OperatorEnd = 299,
-                DelimiterStart = 300,
-                DelimiterEnd = 399,
-                DirectiveStart = 400,
-                DirectiveEnd = 499,
-                TypeStart = 500,
-                TypeEnd = 599
-            };
 
-            // 检查token是否在指定范围内
-            bool isInRange(TokenKind kind, TokenRange start, TokenRange end) {
-                int value = static_cast<int>(kind);
-                return value >= static_cast<int>(start) && value <= static_cast<int>(end);
-            }
-        }  // namespace
+        bool isBaseToken(TokenKind kind) { return kind > TokenKind::FirstBaseToken && kind < TokenKind::LastBaseToken; }
 
-        bool isKeyword(TokenKind kind) { return isInRange(kind, TokenRange::KeywordStart, TokenRange::KeywordEnd); }
-
-        bool isOperator(TokenKind kind) { return isInRange(kind, TokenRange::OperatorStart, TokenRange::OperatorEnd); }
-
-        bool isDelimiter(TokenKind kind) {
-            return isInRange(kind, TokenRange::DelimiterStart, TokenRange::DelimiterEnd);
+        bool isStringLiteralToken(TokenKind kind) {
+            return kind > TokenKind::FirstStringLiteral && kind < TokenKind::LastStringLiteral;
         }
 
-        bool isDirective(TokenKind kind) {
-            return isInRange(kind, TokenRange::DirectiveStart, TokenRange::DirectiveEnd);
-        }
+        bool isKeyword(TokenKind kind) { return kind > TokenKind::FirstKeyword && kind < TokenKind::LastKeyword; }
 
-        bool isTypeKeyword(TokenKind kind) { return isInRange(kind, TokenRange::TypeStart, TokenRange::TypeEnd); }
+        bool isOperator(TokenKind kind) { return kind > TokenKind::FirstOperator && kind < TokenKind::LastOperator; }
 
-        // 获取token的字符串表示
+        bool isDelimiter(TokenKind kind) { return kind > TokenKind::FirstDelimiter && kind < TokenKind::LastDelimiter; }
 
-        // 新增：检查是否是基本token
-        bool isBaseToken(TokenKind kind) { return isInRange(kind, TokenRange::BaseStart, TokenRange::BaseEnd); }
+        bool isDirective(TokenKind kind) { return kind > TokenKind::FirstDirective && kind < TokenKind::LastDirective; }
 
-        // 新增：检查token是否有效
-        bool isValidToken(TokenKind kind) {
-            return isBaseToken(kind) || isKeyword(kind) || isOperator(kind) || isDelimiter(kind) || isDirective(kind) ||
-                   isTypeKeyword(kind);
-        }
-
-        // 新增：获取token的范围类别
+        // 获取token的分类
         TokenCategory getTokenCategory(TokenKind kind) {
             if (isBaseToken(kind)) {
-                return TokenCategory::Special;
-            } else if (isKeyword(kind)) {
-                return TokenCategory::Keyword;
-            } else if (isOperator(kind)) {
-                return TokenCategory::Operator;
-            } else if (isDelimiter(kind)) {
-                return TokenCategory::Delimiter;
-            } else if (isDirective(kind)) {
-                return TokenCategory::Special;
-            } else if (isTypeKeyword(kind)) {
+                if (kind == TokenKind::EndOfFile || kind == TokenKind::Invalid) {
+                    return TokenCategory::Special;
+                }
+                if (kind == TokenKind::Identifier) {
+                    return TokenCategory::Identifier;
+                }
+                if (kind == TokenKind::NumberLiteral || kind == TokenKind::CharLiteral) {
+                    return TokenCategory::Literal;
+                }
+            }
+
+            if (isStringLiteralToken(kind)) {
+                return TokenCategory::Literal;
+            }
+
+            if (isKeyword(kind)) {
                 return TokenCategory::Keyword;
             }
+
+            if (isOperator(kind)) {
+                return TokenCategory::Operator;
+            }
+
+            if (isDelimiter(kind)) {
+                return TokenCategory::Delimiter;
+            }
+
+            if (isDirective(kind)) {
+                return TokenCategory::Special;
+            }
+
             return TokenCategory::Special;
+        }
+
+        // 获取token的字符串表示
+        const char* getTokenKindName(TokenKind kind) {
+            switch (kind) {
+#define TOKEN(name, str)  \
+    case TokenKind::name: \
+        return str;
+#define KEYWORD(name, str)          \
+    case TokenKind::Keyword_##name: \
+        return str;
+#define OPERATOR(name, str) \
+    case TokenKind::name:   \
+        return str;
+#define DELIMITER(name, str) \
+    case TokenKind::name:    \
+        return str;
+#define DIRECTIVE(name, str)          \
+    case TokenKind::Directive_##name: \
+        return str;
+#define TYPE(name, str)             \
+    case TokenKind::Keyword_##name: \
+        return str;
+#include "TokenKind.def"
+#undef TOKEN
+#undef KEYWORD
+#undef OPERATOR
+#undef DELIMITER
+#undef DIRECTIVE
+#undef TYPE
+                default:
+                    return "unknown";
+            }
         }
 
     }  // namespace frontend

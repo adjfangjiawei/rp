@@ -1,10 +1,24 @@
 // Main token definition file that includes all token categories
 
-// Include all token definition files
+// Include base tokens
 #include "TokenDefs/BaseTokens.def"
 #include "TokenDefs/StringLiterals.def"
+
+// Keywords range start
+TOKEN(FirstKeyword, "")
 #include "TokenDefs/Keywords.def"
-#include "TokenDefs/Operators.def"
-#include "TokenDefs/Delimiters.def"
-#include "TokenDefs/Directives.def"
 #include "TokenDefs/Types.def"
+TOKEN(LastKeyword, "")
+
+// Operators range
+TOKEN(FirstOperator, "")
+#include "TokenDefs/Operators.def"
+TOKEN(LastOperator, "")
+
+// Delimiters range
+TOKEN(FirstDelimiter, "")
+#include "TokenDefs/Delimiters.def"
+TOKEN(LastDelimiter, "")
+
+// Directives
+#include "TokenDefs/Directives.def"

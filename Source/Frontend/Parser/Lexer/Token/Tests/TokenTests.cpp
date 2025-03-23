@@ -136,6 +136,40 @@ namespace rp {
                 EXPECT_EQ(TokenUtils::getCategory(TokenKind::LBrace), TokenCategory::Delimiter);
             }
 
+            // 字符串字面量测试
+            TEST_F(TokenTest, StringLiteralTests) {
+                Token token(TokenKind::StringLiteral);
+                token.setStringInfo(true, "delim");
+                token.setStringEncoding(false, true, false, false);
+
+                EXPECT_TRUE(token.isRawString());
+                EXPECT_TRUE(token.isUTF8String());
+                EXPECT_FALSE(token.isWideString());
+                EXPECT_EQ(token.getDelimiter(), "delim");
+
+                EXPECT_TRUE(TokenUtils::isStringLiteralToken(TokenKind::StringLiteral));
+                EXPECT_TRUE(TokenUtils::isStringLiteralToken(TokenKind::RawStringLiteral));
+                EXPECT_TRUE(TokenUtils::isStringLiteralToken(TokenKind::UTF8StringLiteral));
+                EXPECT_FALSE(TokenUtils::isStringLiteralToken(TokenKind::CharLiteral));
+            }
+
+            // 错误处理和恢复测试
+            TEST_F(TokenTest, ErrorHandlingAndRecovery) {
+                Token token;
+                token.setError("Test error", 5, 10);
+
+                EXPECT_TRUE(token.hasError());
+                EXPECT_EQ(token.getErrorMessage(), "Test error");
+
+                auto errorLoc = token.getErrorLocation();
+                EXPECT_TRUE(errorLoc.has_value());
+                EXPECT_EQ(errorLoc->first, 5);
+                EXPECT_EQ(errorLoc->second, 10);
+
+                EXPECT_TRUE(TokenUtils::isErrorToken(TokenKind::Invalid));
+                EXPECT_TRUE(TokenUtils::isErrorToken(TokenKind::StringLiteral_Unterminated));
+            }
+
         }  // namespace test
     }  // namespace frontend
 }  // namespace rp

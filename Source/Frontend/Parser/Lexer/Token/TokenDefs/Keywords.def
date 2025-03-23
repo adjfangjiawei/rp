@@ -31,6 +31,10 @@ KEYWORD(Break,        "break")
 KEYWORD(Continue,     "continue")
 KEYWORD(Return,       "return")
 
+// Boolean literals
+KEYWORD(True,         "true")
+KEYWORD(False,        "false")
+
 // C++11 keywords
 KEYWORD(Alignas,      "alignas")
 KEYWORD(Alignof,      "alignof")

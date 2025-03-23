@@ -4,12 +4,12 @@
 #include <string>
 #include <string_view>
 
-#include "Frontend/Parser/Lexer/LiteralsLexer/NumberLiteralLexer/Base/NumberLiteralBase.h"
-#include "TokenCategory.h"
 #include "TokenKind.h"
 
 namespace rp {
     namespace frontend {
+        struct NumberValue;
+        enum class NumberKind;
 
         // Token基础结构体
         struct Token {
@@ -19,16 +19,16 @@ namespace rp {
             unsigned line;
             unsigned column;
             std::string filename;
-            size_t endPos{0};  // 添加结束位置
+            size_t endPos{0};  // Token结束位置
 
-            // 字面量值
+            // 字面量值联合体
             union {
                 long long intValue;
                 double floatValue;
                 bool boolValue;
             };
 
-            // 错误恢复信息
+            // 错误信息结构
             struct ErrorInfo {
                 bool hasError{false};
                 std::string message;
@@ -37,232 +37,73 @@ namespace rp {
             };
             std::shared_ptr<ErrorInfo> errorInfo;
 
-            // 字符串字面量的额外信息
+            // 字符串信息结构
             struct StringInfo {
                 bool isRawString{false};
-                std::string delimiter;  // 原始字符串的分隔符
-                bool isWide{false};     // 是否是宽字符串
-                bool isUTF8{false};     // 是否是UTF-8字符串
-                bool isUTF16{false};    // 是否是UTF-16字符串
-                bool isUTF32{false};    // 是否是UTF-32字符串
+                std::string delimiter;
+                bool isWide{false};
+                bool isUTF8{false};
+                bool isUTF16{false};
+                bool isUTF32{false};
             };
             std::shared_ptr<StringInfo> stringInfo;
 
-            // 默认构造函数
-            Token() : kind(TokenKind::Invalid), line(0), column(0), intValue(0) {}
+            // 构造函数
+            Token();
+            explicit Token(TokenKind k);
+            Token(TokenKind k, unsigned ln, unsigned col);
+            Token(TokenKind k, size_t pos, unsigned ln, unsigned col);
+            Token(TokenKind k, unsigned ln, unsigned col, const std::string& fname);
 
-            // 基本构造函数
-            explicit Token(TokenKind k) : kind(k), line(0), column(0), intValue(0) {}
+            // 拷贝和移动操作
+            Token(const Token& other);
+            Token& operator=(const Token& other);
+            Token(Token&& other) noexcept;
+            Token& operator=(Token&& other) noexcept;
 
-            // 位置信息构造函数
-            Token(TokenKind k, unsigned ln, unsigned col) : kind(k), line(ln), column(col), intValue(0) {}
+            // 文本操作
+            void setText(std::string_view sv);
+            void setText(std::string&& str);
+            void setText(const std::string& str);
+            std::string_view getText() const;
 
-            // 带位置的构造函数
-            Token(TokenKind k, size_t pos, unsigned ln, unsigned col) : kind(k), line(ln), column(col), intValue(0) {}
+            // 错误处理
+            void setError(const std::string& message, unsigned errorLine = 0, unsigned errorColumn = 0);
+            bool hasError() const;
+            std::string getErrorMessage() const;
+            std::optional<std::pair<unsigned, unsigned>> getErrorLocation() const;
 
-            // 完整构造函数
-            Token(TokenKind k, unsigned ln, unsigned col, const std::string& fname)
-                : kind(k), line(ln), column(col), filename(fname), intValue(0) {}
-
-            // 带位置和值的构造函数
-            Token(TokenKind k, size_t pos, unsigned ln, unsigned col, const NumberValue& value)
-                : kind(k), line(ln), column(col), intValue(0) {
-                if (value.kind == NumberKind::Integer) {
-                    intValue = value.value;
-                } else {
-                    floatValue = value.value;
-                }
-            }
-
-            // 数值构造函数
-            Token(TokenKind k, unsigned ln, unsigned col, const NumberValue& value)
-                : kind(k), line(ln), column(col), intValue(0) {
-                if (value.kind == NumberKind::Integer) {
-                    intValue = value.value;
-                } else {
-                    floatValue = value.value;
-                }
-            }
-
-            // 设置文本内容
-            void setText(std::string_view sv) {
-                textStorage = std::string(sv);
-                text = textStorage;
-            }
-
-            void setText(std::string&& str) {
-                textStorage = std::move(str);
-                text = textStorage;
-            }
-
-            void setText(const std::string& str) {
-                textStorage = str;
-                text = textStorage;
-            }
-
-            // 设置错误信息
-            void setError(const std::string& message, unsigned errorLine = 0, unsigned errorColumn = 0) {
-                if (!errorInfo) {
-                    errorInfo = std::make_shared<ErrorInfo>();
-                }
-                errorInfo->hasError = true;
-                errorInfo->message = message;
-                errorInfo->errorLine = errorLine ? errorLine : line;
-                errorInfo->errorColumn = errorColumn ? errorColumn : column;
-            }
-
-            // 设置字符串信息
-            void setStringInfo(bool isRaw = false, const std::string& delim = "") {
-                if (!stringInfo) {
-                    stringInfo = std::make_shared<StringInfo>();
-                }
-                stringInfo->isRawString = isRaw;
-                stringInfo->delimiter = delim;
-            }
-
-            // 设置字符串编码类型
+            // 字符串信息操作
+            void setStringInfo(bool isRaw = false, const std::string& delim = "");
             void setStringEncoding(bool isWide = false,
                                    bool isUTF8 = false,
                                    bool isUTF16 = false,
-                                   bool isUTF32 = false) {
-                if (!stringInfo) {
-                    stringInfo = std::make_shared<StringInfo>();
-                }
-                stringInfo->isWide = isWide;
-                stringInfo->isUTF8 = isUTF8;
-                stringInfo->isUTF16 = isUTF16;
-                stringInfo->isUTF32 = isUTF32;
-            }
+                                   bool isUTF32 = false);
 
-            // 检查是否有错误
-            bool hasError() const { return errorInfo && errorInfo->hasError; }
+            // getter函数
+            bool isRawString() const;
+            bool isWideString() const;
+            bool isUTF8String() const;
+            bool isUTF16String() const;
+            bool isUTF32String() const;
+            std::string getDelimiter() const;
+            TokenKind getKind() const;
+            unsigned getLine() const;
+            unsigned getColumn() const;
+            const std::string& getFilename() const;
+            size_t getEndPos() const;
+            void setEndPos(size_t pos);
 
-            // 获取错误信息
-            std::string getErrorMessage() const { return errorInfo ? errorInfo->message : ""; }
-
-            // 获取错误位置
-            std::optional<std::pair<unsigned, unsigned>> getErrorLocation() const {
-                if (errorInfo && errorInfo->hasError) {
-                    return std::make_pair(errorInfo->errorLine, errorInfo->errorColumn);
-                }
-                return std::nullopt;
-            }
-
-            // 检查字符串类型
-            bool isRawString() const { return stringInfo && stringInfo->isRawString; }
-            bool isWideString() const { return stringInfo && stringInfo->isWide; }
-            bool isUTF8String() const { return stringInfo && stringInfo->isUTF8; }
-            bool isUTF16String() const { return stringInfo && stringInfo->isUTF16; }
-            bool isUTF32String() const { return stringInfo && stringInfo->isUTF32; }
-
-            // 获取原始字符串分隔符
-            std::string getDelimiter() const { return stringInfo ? stringInfo->delimiter : ""; }
-
-            // 获取完整的位置信息
-            std::string getLocation() const {
-                return filename + ":" + std::to_string(line) + ":" + std::to_string(column);
-            }
-
-            // 类型安全的值获取函数
-            std::optional<long long> getIntValue() const {
-                if (kind == TokenKind::NumberLiteral) {
-                    return intValue;
-                }
-                return std::nullopt;
-            }
-
-            std::optional<double> getFloatValue() const {
-                if (kind == TokenKind::NumberLiteral) {
-                    return floatValue;
-                }
-                return std::nullopt;
-            }
-
-            std::optional<bool> getBoolValue() const {
-                if (kind == TokenKind::NumberLiteral) {
-                    return boolValue;
-                }
-                return std::nullopt;
-            }
-
-            // 拷贝构造函数
-            Token(const Token& other)
-                : kind(other.kind),
-                  textStorage(other.textStorage),
-                  line(other.line),
-                  column(other.column),
-                  filename(other.filename),
-                  intValue(other.intValue),
-                  errorInfo(other.errorInfo),
-                  stringInfo(other.stringInfo) {
-                text = textStorage;
-            }
-
-            // 拷贝赋值操作符
-            Token& operator=(const Token& other) {
-                if (this != &other) {
-                    kind = other.kind;
-                    textStorage = other.textStorage;
-                    text = textStorage;
-                    line = other.line;
-                    column = other.column;
-                    filename = other.filename;
-                    intValue = other.intValue;
-                    errorInfo = other.errorInfo;
-                    stringInfo = other.stringInfo;
-                }
-                return *this;
-            }
-
-            // 移动构造函数
-            Token(Token&& other) noexcept
-                : kind(other.kind),
-                  textStorage(std::move(other.textStorage)),
-                  line(other.line),
-                  column(other.column),
-                  filename(std::move(other.filename)),
-                  intValue(other.intValue),
-                  errorInfo(std::move(other.errorInfo)),
-                  stringInfo(std::move(other.stringInfo)) {
-                text = textStorage;
-            }
-
-            // 移动赋值操作符
-            Token& operator=(Token&& other) noexcept {
-                if (this != &other) {
-                    kind = other.kind;
-                    textStorage = std::move(other.textStorage);
-                    text = textStorage;
-                    line = other.line;
-                    column = other.column;
-                    filename = std::move(other.filename);
-                    intValue = other.intValue;
-                    errorInfo = std::move(other.errorInfo);
-                    stringInfo = std::move(other.stringInfo);
-                }
-                return *this;
-            }
-
-            // Token类型判断函数
-            inline bool isKeyword() const;
-            inline bool isOperator() const;
-            inline bool isDelimiter() const;
-
-            // Getter methods
-            std::string_view getText() const { return text; }
-            TokenKind getKind() const { return kind; }
-            unsigned getLine() const { return line; }
-            unsigned getColumn() const { return column; }
-            const std::string& getFilename() const { return filename; }
-            size_t getEndPos() const { return endPos; }
-
-            // 设置结束位置
-            void setEndPos(size_t pos) { endPos = pos; }
+            // 其他函数
+            std::string getLocation() const;
+            bool isKeyword() const;
+            std::optional<long long> getIntValue() const;
+            std::optional<double> getFloatValue() const;
+            std::optional<bool> getBoolValue() const;
 
             // 比较操作符
-            bool operator==(const Token& other) const { return kind == other.kind && text == other.text; }
-
-            bool operator!=(const Token& other) const { return !(*this == other); }
+            bool operator==(const Token& other) const;
+            bool operator!=(const Token& other) const;
         };
 
     }  // namespace frontend
